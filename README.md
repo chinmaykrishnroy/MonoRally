@@ -4,6 +4,10 @@ MonoRally is a minimal black-and-white paddle game built for speed, clean physic
 
 The visual style is intentionally quiet: black court, white/gray paddles, small round balls, monospaced UI, and restrained effects.
 
+## Demo
+
+Play MonoRally at [monorally.prefect-sys.online](https://monorally.prefect-sys.online).
+
 ## Features
 
 - Local AI mode with configurable difficulty.
