@@ -104,7 +104,7 @@ Common options:
 ```env
 APP_HOST_PORT=18787
 PORT=8787
-CORS_ORIGINS=http://localhost:18787,http://127.0.0.1:18787,https://qq.prefect-sys.online
+CORS_ORIGINS=http://localhost:18787,http://127.0.0.1:18787,https://monorally.your-domain.com
 
 PHYSICS_HZ=60
 NETWORK_HZ=30
