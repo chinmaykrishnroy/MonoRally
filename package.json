@@ -1,0 +1,24 @@
+{
+  "name": "monorally",
+  "version": "1.0.0",
+  "description": "Minimal high-speed ball and paddle game with AI, quick match, rooms, spectators, and PWA support.",
+  "type": "module",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "dev": "node server/src/index.js",
+    "check": "node --check server/src/index.js && node --check client/src/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:load": "node scripts/load-test.js",
+    "test:smoke": "node scripts/smoke-test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "autocannon": "^8.0.0",
+    "vitest": "^4.1.5"
+  }
+}

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <meta name="color-scheme" content="dark light">
+    <title>MonoRally</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="menu" id="menu">
+        <div class="brand">
+          <p class="eyebrow">MONO/RALLY</p>
+          <h1>MonoRally</h1>
+          <p class="tag">one-bit paddle physics, quick rooms, clean speed</p>
+          <div class="menuTools" aria-label="game tools">
+            <button id="settingsBtn" class="iconBtn" aria-label="settings">
+              <svg class="gearSvg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"></path>
+                <path d="M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5L10 21.5h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5Z"></path>
+              </svg>
+            </button>
+            <button id="infoBtn" class="iconBtn" aria-label="how to play">i</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <label>
+            <span>handle</span>
+            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="swift-orbit">
+          </label>
+          <div class="buttonGrid">
+            <button id="aiBtn">AI mode</button>
+            <button id="quickBtn">quick match</button>
+          </div>
+          <div class="modeTabs" aria-label="quick match size">
+            <button id="quick1" class="active" type="button">1v1</button>
+            <button id="quick2" type="button">2v2</button>
+          </div>
+          <p class="small" id="quickStatus">quick match waits 5s, then fills empty seats with medium AI</p>
+        </div>
+
+        <div class="panel">
+          <div class="row">
+            <button id="create1">new room / 2</button>
+            <button id="create4">new room / 4</button>
+          </div>
+          <label>
+            <span>room code</span>
+            <input id="roomCode" maxlength="6" placeholder="ABC123">
+          </label>
+          <button id="copyRoomBtn" type="button">copy room link</button>
+          <div class="row">
+            <button id="joinPlayer">join player</button>
+            <button id="joinSpectator">spectate</button>
+          </div>
+          <div class="rooms" id="rooms"></div>
+        </div>
+
+        <button class="install" id="installBtn" hidden>install app</button>
+      </section>
+
+      <section class="game hidden" id="game">
+        <div class="hud">
+          <span id="modeLabel">AI</span>
+          <span id="timer">000</span>
+          <span id="misses">0:0</span>
+          <button id="copyRoomGameBtn" hidden>copy room link</button>
+          <button id="fillAiBtn" hidden>fill AI</button>
+          <button id="replayBtn" hidden>replay</button>
+          <button id="leaveBtn">leave</button>
+        </div>
+        <canvas id="court" width="1000" height="680" aria-label="MonoRally game court"></canvas>
+        <div class="status" id="status">move with pointer, arrows, or A/D</div>
+      </section>
+
+      <div class="overlay hidden" id="overlay">
+        <section class="modal hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+          <div class="modalHeader">
+            <h2 id="settingsTitle">settings</h2>
+            <button class="closeBtn" data-close-modal>close</button>
+          </div>
+          <label>
+            <span>handle</span>
+            <input id="settingsName" maxlength="18" autocomplete="nickname">
+          </label>
+          <label>
+            <span>ai difficulty</span>
+            <select id="aiDifficulty">
+              <option value="easy">easy</option>
+              <option value="medium">medium</option>
+              <option value="hard">hard</option>
+              <option value="insane">insane</option>
+            </select>
+          </label>
+          <input id="renderDelayInput" type="hidden">
+          <label class="checkRow">
+            <input id="bottomControlInput" type="checkbox">
+            <span>bottom-half drag controls paddle</span>
+          </label>
+          <label class="checkRow">
+            <input id="soundInput" type="checkbox">
+            <span>sound effects</span>
+          </label>
+        </section>
+
+        <section class="modal hidden" id="infoModal" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
+          <div class="modalHeader">
+            <h2 id="infoTitle">how to play</h2>
+            <button class="closeBtn" data-close-modal>close</button>
+          </div>
+          <div class="docs">
+            <p>Move your paddle with pointer drag, A/D, arrow keys, or by dragging across the lower half of the screen.</p>
+            <p>In 1v1, the first side to miss 5 balls loses. In 2v2, the first team to miss 8 balls loses.</p>
+            <p>At match start and after a full ball reset, the game counts down 3, 2, 1. The countdown gets faster as the match gets faster.</p>
+            <p>Serves aim toward the receiving paddle, so a player misses mainly by moving away or reacting late.</p>
+            <p>Power-ups spawn near center. The last player to touch the ball gets the power-up when that ball hits it.</p>
+            <p>Multi-ball sets total active balls to 2 in 1v1 and 4 in 2v2. Countdown waits until every active ball is gone.</p>
+            <p>Laser paddle doubles paddle width, then fades back smoothly. EMP slows nearby balls, then fades smoothly.</p>
+            <p>Quick match supports 1v1 and 2v2. If the queue is short, missing players are filled by medium-strength verb-noun AI players.</p>
+            <p>In 2v2 rooms, players first choose one of four paddle slots on the real court edges. The lower two slots are bottom team; the upper two slots are top team. The match starts when all four slots are filled.</p>
+            <p>In 2v2 rooms, players can fill remaining empty seats with AI. Room-fill AI players are named ai-1, ai-2, and so on.</p>
+            <p>Replay appears after a match ends and restarts the same room without recreating it.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="/src/main.js" type="module"></script>
+  </body>
+</html>

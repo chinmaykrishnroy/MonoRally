@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+server.pid
+server.log
+server.err.log
+server.job.log
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+.env
