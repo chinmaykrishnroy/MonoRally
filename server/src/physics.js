@@ -3,6 +3,7 @@ import {
   BALL_MAX_SPEED_MULTIPLIER,
   GAME_ACCEL_SECONDS,
   H,
+  LATE_INPUT_GRACE_MS,
   MAX_BALLS,
   MULTIBALL_TOTAL_1V1,
   MULTIBALL_TOTAL_2V2,
@@ -21,6 +22,11 @@ const PADDLE_LATENCY_ASSIST = 120;
 export function advanceBalls(room, now, dt) {
   const baseSpeed = BALL_BASE_SPEED * speedMultiplier(room, now);
   for (const ball of [...room.balls]) {
+    if (ball.pendingMiss) {
+      resolvePendingMiss(room, ball, now);
+      continue;
+    }
+
     ball.prevX = ball.x;
     ball.prevY = ball.y;
     let desired = baseSpeed;
@@ -47,10 +53,16 @@ export function advanceBalls(room, now, dt) {
     for (const player of room.players) {
       if (!player.disconnected) collidePaddle(room, player, ball, now);
     }
+
+    const crossedTeam = crossedPaddleTeam(ball);
+    if (crossedTeam) {
+      queuePendingMiss(room, crossedTeam, ball, now);
+      continue;
+    }
     collidePower(room, ball, now);
 
-    if (ball.y < -ball.r) miss(room, "top", ball, now);
-    if (ball.y > H + ball.r) miss(room, "bottom", ball, now);
+    if (ball.y < -ball.r) queuePendingMiss(room, "top", ball, now);
+    if (ball.y > H + ball.r) queuePendingMiss(room, "bottom", ball, now);
   }
 
   room.balls = room.balls.filter((ball) => !ball.dead).slice(0, MAX_BALLS);
@@ -136,6 +148,57 @@ function paddleCollisionCenter(player, width, hitX) {
   return clamp(hitX, Math.min(current, assisted), Math.max(current, assisted));
 }
 
+function crossedPaddleTeam(ball) {
+  const oldY = Number.isFinite(ball.prevY) ? ball.prevY : ball.y;
+  if (ball.vy < 0 && oldY >= 28 && ball.y < 28) return "top";
+  if (ball.vy > 0 && oldY <= H - 28 && ball.y > H - 28) return "bottom";
+  return null;
+}
+
+function queuePendingMiss(room, team, ball, now) {
+  if (ball.pendingMiss || ball.dead) return;
+  const paddleY = team === "top" ? 28 : H - 28;
+  const oldX = Number.isFinite(ball.prevX) ? ball.prevX : ball.x;
+  const oldY = Number.isFinite(ball.prevY) ? ball.prevY : ball.y;
+  const denom = ball.y - oldY;
+  const t = Math.abs(denom) > 0.001 ? clamp((paddleY - oldY) / denom, 0, 1) : 1;
+  const hitX = clamp(oldX + (ball.x - oldX) * t, ball.r, W - ball.r);
+  ball.x = hitX;
+  ball.y = paddleY;
+  ball.pendingMiss = {
+    team,
+    hitX,
+    crossedAt: now,
+    resolveAt: now + LATE_INPUT_GRACE_MS
+  };
+}
+
+function resolvePendingMiss(room, ball, now) {
+  const pending = ball.pendingMiss;
+  const players = room.players.filter((player) => player.team === pending.team && player.clientId && !player.disconnected);
+  for (const player of players) {
+    const width = paddleWidth(player, now);
+    const recent = (player.inputHistory || []).filter((input) => input.at >= pending.crossedAt - LATE_INPUT_GRACE_MS);
+    const claim = [...recent].reverse().find((input) => Math.abs(pending.hitX - input.x) <= width / 2 + ball.r + PADDLE_EDGE_GRACE);
+    if (!claim) continue;
+
+    const center = clamp(claim.x, width / 2 + 4, W - width / 2 - 4);
+    const offset = clamp((pending.hitX - center) / (width / 2), -1, 1);
+    ball.pendingMiss = null;
+    ball.x = pending.hitX;
+    ball.vx += offset * 260;
+    ball.vy = Math.abs(ball.vy) * (player.team === "top" ? 1 : -1);
+    ball.y = (player.team === "top" ? 28 : H - 28) + (player.team === "top" ? ball.r + PADDLE_HEIGHT / 2 + 1 : -ball.r - PADDLE_HEIGHT / 2 - 1);
+    ball.lastTouch = playerKey(player);
+    ball.bump = now;
+    player.x = center;
+    room.lastHit = { x: ball.x, y: ball.y, at: now };
+    return;
+  }
+
+  if (now >= pending.resolveAt) finalizeMiss(room, pending.team, ball, now);
+}
+
 function collidePower(room, ball, now) {
   if (!room.power) return;
   if (Math.hypot(ball.x - room.power.x, ball.y - room.power.y) > ball.r + room.power.r) return;
@@ -168,9 +231,10 @@ function collidePower(room, ball, now) {
   room.nextPowerAt = now + rand(POWERUP_MIN_MS, POWERUP_MAX_MS);
 }
 
-function miss(room, team, ball, now) {
+function finalizeMiss(room, team, ball, now) {
   room.misses[team] += 1;
   ball.dead = true;
+  ball.pendingMiss = null;
   ball.bump = now;
   room.lastMissTeam = team;
   room.pendingCountdown = true;

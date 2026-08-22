@@ -9,6 +9,18 @@ test("menu renders and AI mode draws the court", async ({ page }) => {
   await expect(page.locator("#status")).toContainText("AI mode");
 });
 
+test("menu explains modes and first match coaches controls", async ({ page }) => {
+  await page.goto("/");
+  const quick = page.getByRole("button", { name: "quick match" });
+  await expect(quick).toHaveAttribute("data-tooltip", /Find online players/);
+  await expect(page.locator(".quickGuide")).toContainText("drag anywhere across the lower half");
+
+  await page.getByRole("button", { name: "AI mode" }).click();
+  await expect(page.locator("#controlCoach")).toBeVisible();
+  await page.getByRole("button", { name: "got it" }).click();
+  await expect(page.locator("#controlCoach")).toBeHidden();
+});
+
 test("room link can be created and copied", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "new room / 2" }).click();

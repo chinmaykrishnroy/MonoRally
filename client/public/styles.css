@@ -168,6 +168,27 @@ h1 {
   line-height: 1.5;
 }
 
+.quickGuide {
+  display: grid;
+  gap: 7px;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.quickGuide p {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 10px;
+  margin: 0;
+}
+
+.quickGuide b {
+  color: var(--fg);
+  font-weight: 400;
+}
+
 .menuTools {
   display: flex;
   gap: 10px;
@@ -301,6 +322,40 @@ body.game-active .game {
   font-weight: 700;
 }
 
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: min(260px, 72vw);
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  background: var(--fg);
+  color: var(--bg);
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 100ms ease, transform 100ms ease;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .gearSvg {
   width: 22px;
   height: 22px;
@@ -352,6 +407,81 @@ body.game-active .hud button {
   color: var(--fg);
   backdrop-filter: blur(8px);
   pointer-events: auto;
+}
+
+body.game-active .hud [data-tooltip]::after {
+  top: calc(100% + 7px);
+  bottom: auto;
+}
+
+.networkBadge[data-quality="good"] {
+  color: #fff;
+}
+
+.networkBadge[data-quality="fair"] {
+  color: #bdbdbd;
+}
+
+.networkBadge[data-quality="slow"] {
+  color: #888;
+  border-style: dashed;
+}
+
+.controlCoach {
+  position: absolute;
+  z-index: 4;
+  top: max(76px, calc(env(safe-area-inset-top) + 64px));
+  left: 50%;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  width: min(620px, calc(100vw - 24px));
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.84);
+  color: #fff;
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+
+.controlCoach.hidden {
+  display: none;
+}
+
+.controlCoach > div:first-child {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  font-size: 12px;
+}
+
+.controlCoach strong {
+  font-weight: 400;
+}
+
+.controlCoach span {
+  color: #aaa;
+}
+
+.keyHint {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+kbd {
+  min-width: 24px;
+  padding: 3px 5px;
+  border: 1px solid #777;
+  color: #fff;
+  font: inherit;
+  text-align: center;
+}
+
+.controlCoach button {
+  min-height: 36px;
+  border-color: #777;
 }
 
 body.game-active .status {
@@ -539,6 +669,19 @@ body.game-active .status {
   body.game-active .status {
     min-height: 42px;
     font-size: 14px;
+  }
+
+  .controlCoach {
+    top: max(112px, calc(env(safe-area-inset-top) + 102px));
+    gap: 10px;
+  }
+
+  .keyHint {
+    display: none;
+  }
+
+  [data-tooltip]::after {
+    display: none;
   }
 }
 

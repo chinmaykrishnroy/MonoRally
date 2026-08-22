@@ -63,6 +63,8 @@ export function createRoomLifecycle(rooms) {
         player.x = W / 2;
       }
       player.targetX = player.x;
+      player.inputHistory = [];
+      player.lastInputAt = 0;
       player.laserActiveUntil = 0;
       player.laserFadeUntil = 0;
       player.empActiveUntil = 0;

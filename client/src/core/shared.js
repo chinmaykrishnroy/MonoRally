@@ -3,7 +3,7 @@ export const H = 680;
 
 export const config = {
   aiDifficulty: "hard",
-  renderDelayMs: 90,
+  renderDelayMs: 25,
   quickMatchFallbackMs: 5000,
   quickAiDifficulty: "medium",
   maxSpectators: 10,
@@ -15,6 +15,9 @@ export const config = {
   missLimit2v2: 8,
   colorInvertAtSeconds: 100,
   colorInvertDurationMs: 3000,
+  inputSendHz: 60,
+  inputBufferLimitBytes: 2048,
+  lateInputGraceMs: 220,
   networkHz: 30,
   physicsHz: 60
 };
@@ -27,6 +30,7 @@ export const settings = {
 export const SETTINGS_KEY = "monorally-settings-v1";
 export const SESSION_KEY = "monorally_session";
 export const RESUME_KEY = "monorally-resume-v1";
+export const COACH_KEY = "monorally-coach-v1";
 
 export const HANDLE_VERBS = ["swift", "steady", "sharp", "calm", "bright", "brisk", "bold", "silent", "quick", "nimble"];
 export const HANDLE_NOUNS = ["orbit", "paddle", "rally", "vector", "pulse", "arc", "serve", "drift", "dash", "comet"];

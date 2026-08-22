@@ -17,14 +17,19 @@
           <p class="eyebrow">MONO/RALLY</p>
           <h1>MonoRally</h1>
           <p class="tag">one-bit paddle physics, quick rooms, clean speed</p>
+          <div class="quickGuide" aria-label="quick start">
+            <p><b>01 move</b><span>drag anywhere across the lower half</span></p>
+            <p><b>02 return</b><span>meet the ball with your paddle</span></p>
+            <p><b>03 survive</b><span>first to 5 misses loses in 1v1</span></p>
+          </div>
           <div class="menuTools" aria-label="game tools">
-            <button id="settingsBtn" class="iconBtn" aria-label="settings">
+            <button id="settingsBtn" class="iconBtn" aria-label="settings" data-tooltip="Adjust AI, touch controls, and sound">
               <svg class="gearSvg" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"></path>
                 <path d="M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5L10 21.5h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5Z"></path>
               </svg>
             </button>
-            <button id="infoBtn" class="iconBtn" aria-label="how to play">i</button>
+            <button id="infoBtn" class="iconBtn" aria-label="how to play" data-tooltip="Read rules, power-ups, rooms, and replay">i</button>
           </div>
         </div>
 
@@ -34,29 +39,29 @@
             <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="swift-orbit">
           </label>
           <div class="buttonGrid">
-            <button id="aiBtn">AI mode</button>
-            <button id="quickBtn">quick match</button>
+            <button id="aiBtn" aria-label="AI mode" data-tooltip="Play instantly against local AI">AI mode</button>
+            <button id="quickBtn" aria-label="quick match" data-tooltip="Find online players; AI fills empty seats after 5 seconds">quick match</button>
           </div>
           <div class="modeTabs" aria-label="quick match size">
-            <button id="quick1" class="active" type="button">1v1</button>
-            <button id="quick2" type="button">2v2</button>
+            <button id="quick1" class="active" type="button" aria-label="1v1" data-tooltip="One paddle per side, first to 5 misses loses">1v1</button>
+            <button id="quick2" type="button" aria-label="2v2" data-tooltip="Two paddles and two balls per team, first to 8 misses loses">2v2</button>
           </div>
           <p class="small" id="quickStatus">quick match waits 5s, then fills empty seats with medium AI</p>
         </div>
 
         <div class="panel">
           <div class="row">
-            <button id="create1">new room / 2</button>
-            <button id="create4">new room / 4</button>
+            <button id="create1" aria-label="new room / 2" data-tooltip="Create a private 1v1 room">new room / 2</button>
+            <button id="create4" aria-label="new room / 4" data-tooltip="Create a private 2v2 room with team slots">new room / 4</button>
           </div>
           <label>
             <span>room code</span>
             <input id="roomCode" maxlength="6" placeholder="ABC123">
           </label>
-          <button id="copyRoomBtn" type="button">copy room link</button>
+          <button id="copyRoomBtn" type="button" aria-label="copy room link" data-tooltip="Copy a joinable link for this room code">copy room link</button>
           <div class="row">
-            <button id="joinPlayer">join player</button>
-            <button id="joinSpectator">spectate</button>
+            <button id="joinPlayer" aria-label="join player" data-tooltip="Take an open player slot">join player</button>
+            <button id="joinSpectator" aria-label="spectate" data-tooltip="Watch without controlling a paddle">spectate</button>
           </div>
           <div class="rooms" id="rooms"></div>
         </div>
@@ -69,12 +74,18 @@
           <span id="modeLabel">AI</span>
           <span id="timer">000</span>
           <span id="misses">0:0</span>
-          <button id="copyRoomGameBtn" hidden>copy room link</button>
-          <button id="fillAiBtn" hidden>fill AI</button>
-          <button id="replayBtn" hidden>replay</button>
-          <button id="leaveBtn">leave</button>
+          <span id="networkBadge" class="networkBadge" data-tooltip="Measured round-trip connection latency" hidden>-- ms</span>
+          <button id="copyRoomGameBtn" aria-label="copy room link" data-tooltip="Copy this room's invite link" hidden>copy room link</button>
+          <button id="fillAiBtn" aria-label="fill AI" data-tooltip="Start now by filling every empty 2v2 slot with AI" hidden>fill AI</button>
+          <button id="replayBtn" aria-label="replay" data-tooltip="Play again in the same room" hidden>replay</button>
+          <button id="leaveBtn" aria-label="leave" data-tooltip="Return to the main menu">leave</button>
         </div>
         <canvas id="court" width="1000" height="680" aria-label="MonoRally game court"></canvas>
+        <div class="controlCoach hidden" id="controlCoach" role="status">
+          <div><strong>move your bottom paddle</strong><span>drag anywhere across the lower half</span></div>
+          <div class="keyHint"><kbd>A</kbd><kbd>D</kbd><span>or</span><kbd>&larr;</kbd><kbd>&rarr;</kbd></div>
+          <button id="dismissCoach" type="button">got it</button>
+        </div>
         <div class="status" id="status">move with pointer, arrows, or A/D</div>
       </section>
 

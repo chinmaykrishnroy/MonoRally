@@ -6,7 +6,7 @@ export const PHYSICS_HZ = envNumber("PHYSICS_HZ", 60, 30, 240);
 export const NETWORK_HZ = envNumber("NETWORK_HZ", 30, 10, 60);
 export const PORT = envNumber("PORT", 8787, 1024, 65535);
 export const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS ||
-  `http://localhost:${PORT},http://127.0.0.1:${PORT},https://qq.prefect-sys.online`)
+  `http://localhost:${PORT},http://127.0.0.1:${PORT},https://monorally.prefect-sys.online`)
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -17,6 +17,10 @@ export const WEBSOCKET_MAX_MESSAGE_BYTES = envNumber("WEBSOCKET_MAX_MESSAGE_BYTE
 export const HEARTBEAT_MS = envNumber("HEARTBEAT_MS", 15000, 5000, 60000);
 export const CLIENT_TIMEOUT_MS = envNumber("CLIENT_TIMEOUT_MS", 45000, 10000, 180000);
 export const INPUT_RATE_LIMIT_PER_SECOND = envNumber("INPUT_RATE_LIMIT_PER_SECOND", 160, 30, 1000);
+export const INPUT_HISTORY_MS = envNumber("INPUT_HISTORY_MS", 500, 100, 2000);
+export const LATE_INPUT_GRACE_MS = envNumber("LATE_INPUT_GRACE_MS", 220, 0, 500);
+export const INPUT_SEND_HZ = envNumber("INPUT_SEND_HZ", 60, 20, 120);
+export const INPUT_BUFFER_LIMIT_BYTES = envNumber("INPUT_BUFFER_LIMIT_BYTES", 2048, 256, 65536);
 export const MISS_LIMIT_1V1 = envNumber("MISS_LIMIT_1V1", 5, 1, 99);
 export const MISS_LIMIT_2V2 = envNumber("MISS_LIMIT_2V2", 8, 1, 99);
 export const BALL_BASE_SPEED = envNumber("BALL_BASE_SPEED", 450, 120, 1600);
@@ -38,7 +42,7 @@ export const INPUT_PACKET = 1;
 export function publicConfig() {
   return {
     aiDifficulty: envText("AI_DIFFICULTY", "hard", ["easy", "medium", "hard", "insane"]),
-    renderDelayMs: envNumber("RENDER_DELAY_MS", 90, 40, 220),
+    renderDelayMs: envNumber("RENDER_DELAY_MS", 25, 0, 100),
     quickMatchFallbackMs: QUICK_MATCH_FALLBACK_MS,
     quickAiDifficulty: QUICK_AI_DIFFICULTY,
     maxSpectators: MAX_SPECTATORS,
@@ -51,6 +55,9 @@ export function publicConfig() {
     colorInvertAtSeconds: COLOR_INVERT_AT_SECONDS,
     colorInvertDurationMs: COLOR_INVERT_DURATION_MS,
     inputRateLimitPerSecond: INPUT_RATE_LIMIT_PER_SECOND,
+    inputSendHz: INPUT_SEND_HZ,
+    inputBufferLimitBytes: INPUT_BUFFER_LIMIT_BYTES,
+    lateInputGraceMs: LATE_INPUT_GRACE_MS,
     networkHz: NETWORK_HZ,
     physicsHz: PHYSICS_HZ
   };

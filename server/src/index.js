@@ -3,6 +3,7 @@ import {
   CLIENT_TIMEOUT_MS,
   HEARTBEAT_MS,
   H,
+  INPUT_HISTORY_MS,
   INPUT_RATE_LIMIT_PER_SECOND,
   INPUT_PACKET,
   MAX_SPECTATORS,
@@ -87,24 +88,47 @@ function handleMessage(client, msg) {
   if (msg.t === "selectSlot") selectSlot(client, Number(msg.slot));
   if (msg.t === "fillAi") fillRoomWithAi(client);
   if (msg.t === "input") {
-    updateClientInput(client, Number(msg.x));
+    updateClientInput(client, Number(msg.x), Number.isInteger(msg.sequence) ? msg.sequence : null);
   }
+  if (msg.t === "ping") send(client, { t: "pong", id: Number(msg.id) || 0, at: Number(msg.at) || 0 });
   if (msg.t === "rooms") send(client, { t: "rooms", rooms: publicRooms() });
 }
 
 function handleBinaryMessage(client, data) {
   if (data.length < 3 || data[0] !== INPUT_PACKET) return;
   const encoded = data.readUInt16BE(1);
-  updateClientInput(client, encoded / 65535);
+  const sequence = data.length >= 5 ? data.readUInt16BE(3) : null;
+  updateClientInput(client, encoded / 65535, sequence);
 }
 
-function updateClientInput(client, x) {
+function updateClientInput(client, x, sequence = null) {
+  if (!acceptInputSequence(client, sequence)) return;
   if (!allowClientInput(client)) return;
+  const now = performance.now();
   client.inputX = clamp(x, 0, 1);
   if (client.room) {
     const player = client.room.players.find((p) => p.clientId === client.id);
-    if (player) player.targetX = client.inputX * W;
+    if (player) {
+      player.targetX = client.inputX * W;
+      player.lastInputAt = now;
+      player.inputHistory ??= [];
+      player.inputHistory.push({ x: player.targetX, at: now, sequence });
+      player.inputHistory = player.inputHistory.filter((input) => now - input.at <= INPUT_HISTORY_MS).slice(-24);
+    }
   }
+}
+
+function acceptInputSequence(client, sequence) {
+  if (!Number.isInteger(sequence)) return true;
+  const normalized = sequence & 0xffff;
+  if (!Number.isInteger(client.lastInputSequence)) {
+    client.lastInputSequence = normalized;
+    return true;
+  }
+  const distance = (normalized - client.lastInputSequence + 0x10000) & 0xffff;
+  if (distance === 0 || distance >= 0x8000) return false;
+  client.lastInputSequence = normalized;
+  return true;
 }
 
 function allowClientInput(client) {
@@ -303,6 +327,8 @@ function addPlayer(room, client, assignment = null) {
     disconnectedAt: 0,
     x,
     targetX: x,
+    inputHistory: [],
+    lastInputAt: 0,
     laserActiveUntil: 0,
     laserFadeUntil: 0,
     empActiveUntil: 0,
@@ -331,6 +357,8 @@ function addBot(room, slot, name = generatedName()) {
     disconnectedAt: 0,
     x,
     targetX: x,
+    inputHistory: [],
+    lastInputAt: 0,
     laserActiveUntil: 0,
     laserFadeUntil: 0,
     empActiveUntil: 0,

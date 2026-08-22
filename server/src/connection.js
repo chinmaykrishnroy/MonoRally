@@ -52,6 +52,7 @@ export function attachWebSocketServer(server, { broadcastRooms, clients, onBinar
       inputWindowStartedAt: 0,
       inputCount: 0,
       inputLimitedAt: 0,
+      lastInputSequence: null,
       alive: true
     };
     clients.set(client.id, client);

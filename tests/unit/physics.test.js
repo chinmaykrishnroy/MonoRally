@@ -65,17 +65,42 @@ describe("server physics", () => {
     expect(room.lastHit).toBeUndefined();
   });
 
-  test("marks a miss and waits for all active balls before countdown", () => {
+  test("finalizes a miss after the late-input grace window", () => {
     const room = roomFixture({
       balls: [{ ...makeBall(1), y: H + 20, vy: 450 }]
     });
 
     advanceBalls(room, 1000, 1 / 60);
 
+    expect(room.misses.bottom).toBe(0);
+    expect(room.balls[0].pendingMiss).toMatchObject({ team: "bottom" });
+
+    advanceBalls(room, 1250, 1 / 60);
+
     expect(room.misses.bottom).toBe(1);
     expect(room.balls).toHaveLength(0);
     expect(room.pendingCountdown).toBe(true);
     expect(room.lastMissTeam).toBe("bottom");
+  });
+
+  test("accepts a legitimate paddle input that arrives just after the crossing", () => {
+    const room = roomFixture({
+      players: [
+        { id: "bottom", clientId: "bottom", name: "bottom", team: "bottom", slot: 0, x: 180, targetX: 180, inputHistory: [], laserActiveUntil: 0, laserFadeUntil: 0, empActiveUntil: 0, empFadeUntil: 0 },
+        { id: "top", clientId: "top", name: "top", team: "top", slot: 1, x: W / 2, targetX: W / 2, inputHistory: [], laserActiveUntil: 0, laserFadeUntil: 0, empActiveUntil: 0, empFadeUntil: 0 }
+      ],
+      balls: [{ ...makeBall(1), x: 760, y: H + 20, prevX: 760, prevY: H - 20, vx: 0, vy: 450 }]
+    });
+
+    advanceBalls(room, 1000, 1 / 60);
+    room.players[0].targetX = 760;
+    room.players[0].inputHistory.push({ x: 760, at: 1110, sequence: 7 });
+    advanceBalls(room, 1110, 1 / 60);
+
+    expect(room.misses.bottom).toBe(0);
+    expect(room.balls[0].pendingMiss).toBeNull();
+    expect(room.balls[0].vy).toBeLessThan(0);
+    expect(room.lastHit.x).toBeCloseTo(760, 0);
   });
 
   test("serves two balls in 2v2 countdown launch", () => {

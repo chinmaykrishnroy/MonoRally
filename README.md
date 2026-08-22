@@ -20,6 +20,9 @@ Play MonoRally at [monorally.prefect-sys.online](https://monorally.prefect-sys.o
 - Temporary reconnect/resume using browser session identity.
 - Server-authoritative physics.
 - Binary protocol for smooth online state updates with JSON fallback for legacy clients.
+- Low-latency rendering with bounded extrapolation instead of a long visual delay.
+- Server-side late-input validation to prevent legitimate paddle blocks becoming false misses.
+- Contextual mode tooltips, a three-step quick start, and a first-match control coach.
 - Power-ups: multi-ball, laser paddle, and EMP.
 - Timed color inversion/rumble event with configurable trigger and duration.
 - PWA manifest, service worker, and install prompt.
@@ -95,7 +98,7 @@ For Cloudflare Tunnel, point your tunnel to:
 http://localhost:18787
 ```
 
-and keep `https://qq.prefect-sys.online` in `CORS_ORIGINS`.
+and keep `https://monorally.prefect-sys.online` in `CORS_ORIGINS`.
 
 ## Environment Variables
 
@@ -104,11 +107,15 @@ Common options:
 ```env
 APP_HOST_PORT=18787
 PORT=8787
-CORS_ORIGINS=http://localhost:18787,http://127.0.0.1:18787,https://qq.prefect-sys.online
+CORS_ORIGINS=http://localhost:18787,http://127.0.0.1:18787,https://monorally.prefect-sys.online
 
 PHYSICS_HZ=60
 NETWORK_HZ=30
-RENDER_DELAY_MS=90
+RENDER_DELAY_MS=25
+INPUT_SEND_HZ=60
+INPUT_BUFFER_LIMIT_BYTES=2048
+INPUT_HISTORY_MS=500
+LATE_INPUT_GRACE_MS=220
 
 QUICK_MATCH_FALLBACK_MS=5000
 QUICK_AI_DIFFICULTY=medium
@@ -164,6 +171,8 @@ LOAD_DURATION_SECONDS=15
 - Use Docker Compose for a repeatable build.
 - The server exposes `/config.json` so the client receives runtime tuning from the environment.
 - The online protocol uses compact binary state packets for modern clients and JSON snapshots for compatibility.
+- Paddle updates use a five-byte application payload. When a connection is congested, replaceable input is dropped instead of queued behind stale movement.
+- Browsers cannot use raw UDP directly. MonoRally keeps broad browser and Cloudflare Tunnel compatibility with WebSockets, while fixing latency at the prediction and collision-validation layers.
 
 ## License
 

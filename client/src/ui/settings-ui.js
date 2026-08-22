@@ -22,7 +22,7 @@ export function createSettingsUi({ elements, state }) {
       if (!res.ok) return;
       Object.assign(config, await res.json());
       loadSettings();
-      state.renderDelay = Number(config.renderDelayMs) || state.renderDelay;
+      if (Number.isFinite(Number(config.renderDelayMs))) state.renderDelay = Number(config.renderDelayMs);
       quickStatus.textContent = `quick match waits ${Math.round(config.quickMatchFallbackMs / 1000)}s, then fills empty seats with ${config.quickAiDifficulty || "medium"} AI`;
     } catch {
       // Defaults are already tuned for local play.
@@ -34,10 +34,6 @@ export function createSettingsUi({ elements, state }) {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
       if (typeof saved.name === "string") nameInput.value = saved.name;
       if (["easy", "medium", "hard", "insane"].includes(saved.aiDifficulty)) config.aiDifficulty = saved.aiDifficulty;
-      if (Number.isFinite(saved.renderDelayMs)) {
-        state.renderDelay = clamp(Number(saved.renderDelayMs), 40, 180);
-        config.renderDelayMs = state.renderDelay;
-      }
       if (typeof saved.bottomHalfControl === "boolean") settings.bottomHalfControl = saved.bottomHalfControl;
       if (typeof saved.sound === "boolean") settings.sound = saved.sound;
     } catch {
@@ -50,7 +46,6 @@ export function createSettingsUi({ elements, state }) {
     const payload = {
       name: nameInput.value.trim(),
       aiDifficulty: config.aiDifficulty,
-      renderDelayMs: state.renderDelay,
       bottomHalfControl: settings.bottomHalfControl,
       sound: settings.sound
     };
@@ -61,7 +56,7 @@ export function createSettingsUi({ elements, state }) {
   function syncSettingsControls() {
     settingsName.value = nameInput.value;
     aiDifficulty.value = config.aiDifficulty;
-    renderDelayInput.value = String(state.renderDelay || config.renderDelayMs || 90);
+    renderDelayInput.value = String(state.renderDelay || config.renderDelayMs || 25);
     bottomControlInput.checked = settings.bottomHalfControl;
     soundInput.checked = settings.sound;
   }

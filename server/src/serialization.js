@@ -21,7 +21,7 @@ export function jsonState(room, now, mechanics) {
       laser: mechanics.laserStrength(p, now) > 0,
       emp: mechanics.empStrength(p, now) > 0
     })),
-    balls: room.balls.map((b) => ({ x: b.x, y: b.y, r: b.r, bump: now - b.bump < 90 })),
+    balls: room.balls.filter((b) => !b.pendingMiss).map((b) => ({ x: b.x, y: b.y, r: b.r, bump: now - b.bump < 90 })),
     power: room.power,
     lastHit: room.lastHit && now - room.lastHit.at < 120 ? room.lastHit : null,
     lastPower: room.lastPower && now - room.lastPower.at < 1800 ? room.lastPower : null,
@@ -32,7 +32,7 @@ export function jsonState(room, now, mechanics) {
 
 export function statePacket(room, now, mechanics) {
   const players = room.players.filter((player) => !player.disconnected);
-  const balls = room.balls;
+  const balls = room.balls.filter((ball) => !ball.pendingMiss);
   const hasPower = room.power ? 1 : 0;
   const hasLastHit = room.lastHit && now - room.lastHit.at < 120 ? 1 : 0;
   const hasLastPower = room.lastPower && now - room.lastPower.at < 1800 ? 1 : 0;

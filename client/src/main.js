@@ -1,4 +1,4 @@
-import { H, W, clamp, config, settings } from "./core/shared.js";
+import { COACH_KEY, H, W, clamp, config, settings } from "./core/shared.js";
 import { LocalGame } from "./game/local-game.js";
 import { parseStatePacket as parseBinaryStatePacket } from "./network/protocol.js";
 import { createNetwork } from "./network/socket.js";
@@ -25,7 +25,7 @@ const state = {
   quickMode: "1v1",
   lastNetState: null,
   netBuffer: [],
-  renderDelay: 90,
+  renderDelay: 25,
   lastHitStamp: 0,
   lastPowerStamp: "",
   lastMissTotal: 0,
@@ -33,6 +33,10 @@ const state = {
   inputX: 0.5,
   lastInputSentAt: 0,
   lastInputSentX: 0.5,
+  inputSequence: 0,
+  latencyMs: null,
+  pingSequence: 0,
+  pendingPings: new Map(),
   keys: new Set(),
   effects: [],
   lastTime: performance.now(),
@@ -53,9 +57,11 @@ const {
   canvas,
   copyRoomGameBtn,
   copyRoomBtn,
+  controlCoach,
   create1,
   create4,
   ctx,
+  dismissCoach,
   fillAiBtn,
   game,
   infoBtn,
@@ -66,6 +72,7 @@ const {
   menu,
   modeLabel,
   missesEl,
+  networkBadge,
   nameInput,
   overlay,
   quick1,
@@ -115,6 +122,7 @@ applyRoomFromUrl();
 bindUi();
 registerPwa();
 requestAnimationFrame(frame);
+window.setInterval(sendLatencyProbe, 2000);
 
 function bindUi() {
   $("aiBtn").addEventListener("click", () => {
@@ -160,6 +168,7 @@ function bindUi() {
     send({ t: "fillAi" });
   });
   $("leaveBtn").addEventListener("click", leaveGame);
+  dismissCoach.addEventListener("click", dismissControlCoach);
   $("installBtn").addEventListener("click", async () => {
     if (!state.deferredInstall) return;
     state.deferredInstall.prompt();
@@ -175,6 +184,7 @@ function bindUi() {
     }
     if (!isGameInput(event)) return;
     event.preventDefault();
+    dismissControlCoach();
     state.keys.add(event.key.toLowerCase());
     unlockAudio();
   });
@@ -185,6 +195,7 @@ function bindUi() {
 
   const updatePointer = (event) => {
     if (!isPlayingActive()) return;
+    dismissControlCoach();
     const point = renderer.clientToCourt(event.clientX, event.clientY);
     state.inputX = clamp(point.x / W, 0, 1);
     if (state.online && state.role === "player") sendInput();
@@ -248,19 +259,46 @@ function helloMessage() {
 function sendInput() {
   if (state.ws?.readyState !== WebSocket.OPEN) return;
   const now = performance.now();
-  if (now - state.lastInputSentAt < 8 && Math.abs(state.inputX - state.lastInputSentX) < 0.002) return;
+  const interval = 1000 / (Number(config.inputSendHz) || 60);
+  if (now - state.lastInputSentAt < interval) return;
+  if (Math.abs(state.inputX - state.lastInputSentX) < 0.001 && now - state.lastInputSentAt < 100) return;
+  if (state.ws.bufferedAmount > (Number(config.inputBufferLimitBytes) || 2048)) return;
   state.lastInputSentAt = now;
   state.lastInputSentX = state.inputX;
-  const packet = new Uint8Array(3);
+  state.inputSequence = (state.inputSequence + 1) & 0xffff;
+  const packet = new Uint8Array(5);
   const encoded = Math.round(clamp(state.inputX, 0, 1) * 65535);
   packet[0] = 1;
   packet[1] = encoded >> 8;
   packet[2] = encoded & 255;
+  packet[3] = state.inputSequence >> 8;
+  packet[4] = state.inputSequence & 255;
   state.ws.send(packet);
+}
+
+function sendLatencyProbe() {
+  if (state.ws?.readyState !== WebSocket.OPEN) return;
+  const id = ++state.pingSequence;
+  const at = performance.now();
+  state.pendingPings.set(id, at);
+  for (const [pendingId] of state.pendingPings) {
+    if (pendingId < id - 4) state.pendingPings.delete(pendingId);
+  }
+  send({ t: "ping", id, at });
 }
 
 function handleServer(msg) {
   if (!msg) return;
+  if (msg.t === "pong") {
+    const startedAt = state.pendingPings.get(msg.id);
+    if (Number.isFinite(startedAt)) {
+      state.latencyMs = Math.round(performance.now() - startedAt);
+      state.pendingPings.delete(msg.id);
+      networkBadge.textContent = `${state.latencyMs} ms`;
+      networkBadge.dataset.quality = state.latencyMs < 80 ? "good" : state.latencyMs < 160 ? "fair" : "slow";
+    }
+    return;
+  }
   if (msg.t === "hello") state.clientId = msg.id;
   if (msg.t === "quickWait") quickStatus.textContent = `waiting for ${msg.mode || state.quickMode} quick match...`;
   if (msg.t === "quickFallback") quickStatus.textContent = "AI filled empty seats";
@@ -297,11 +335,13 @@ function handleServer(msg) {
     state.lastBumpSignature = "";
     if (msg.role === "player") saveResumeRoom(msg.code);
     showGame(`${msg.mode} / ${msg.role} / ${msg.code}`);
+    networkBadge.hidden = false;
     copyRoomGameBtn.hidden = msg.role !== "player";
     statusEl.textContent = msg.role === "spectator" ? "spectating" : "waiting for players";
   }
   if (msg.t === "rooms") renderRooms(msg.rooms || []);
   if (msg.t === "state") {
+    const matchJustStarted = state.lastNetState?.status !== "running" && msg.status === "running";
     const missTotal = Number(msg.misses?.top || 0) + Number(msg.misses?.bottom || 0);
     if (missTotal > state.lastMissTotal) {
       playMiss();
@@ -326,6 +366,7 @@ function handleServer(msg) {
     state.netBuffer.push({ receivedAt: performance.now(), snapshot: msg });
     if (state.netBuffer.length > 24) state.netBuffer.splice(0, state.netBuffer.length - 24);
     maybePlayGameOver(msg);
+    if (matchJustStarted && state.role === "player") showControlCoach();
   }
   if (msg.t === "replayStarted") {
     state.netBuffer = [];
@@ -440,6 +481,8 @@ function startLocal(label) {
   state.localGame.players[0].name = handle;
   resetRoundVisuals();
   showGame(label);
+  showControlCoach();
+  networkBadge.hidden = true;
   statusEl.textContent = "AI mode / 5 misses loses";
 }
 
@@ -448,6 +491,24 @@ function showGame(label) {
   document.body.classList.add("game-active");
   menu.classList.add("hidden");
   game.classList.remove("hidden");
+}
+
+function showControlCoach() {
+  try {
+    controlCoach.classList.toggle("hidden", localStorage.getItem(COACH_KEY) === "done");
+  } catch {
+    controlCoach.classList.remove("hidden");
+  }
+}
+
+function dismissControlCoach() {
+  if (controlCoach.classList.contains("hidden")) return;
+  controlCoach.classList.add("hidden");
+  try {
+    localStorage.setItem(COACH_KEY, "done");
+  } catch {
+    // The hint can still close when storage is unavailable.
+  }
 }
 
 function leaveGame() {
@@ -466,6 +527,8 @@ function leaveGame() {
   replayBtn.hidden = true;
   fillAiBtn.hidden = true;
   copyRoomGameBtn.hidden = true;
+  networkBadge.hidden = true;
+  controlCoach.classList.add("hidden");
 }
 
 function replayGame() {

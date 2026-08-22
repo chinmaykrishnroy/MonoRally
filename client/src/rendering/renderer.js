@@ -466,7 +466,9 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
 
     if (target <= state.netBuffer[0].receivedAt) return predictOwnPaddle(state.netBuffer[0].snapshot);
     if (target >= state.netBuffer[state.netBuffer.length - 1].receivedAt) {
-      return predictOwnPaddle(state.netBuffer[state.netBuffer.length - 1].snapshot);
+      const latest = state.netBuffer[state.netBuffer.length - 1];
+      const previous = state.netBuffer[state.netBuffer.length - 2];
+      return predictOwnPaddle(extrapolateSnapshot(previous, latest, target));
     }
 
     const span = Math.max(1, newer.receivedAt - older.receivedAt);
@@ -492,6 +494,33 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
         a.power && b.power && a.power.type === b.power.type
           ? { ...b.power, x: mix(a.power.x, b.power.x), y: mix(a.power.y, b.power.y) }
           : b.power
+    };
+  }
+
+  function extrapolateSnapshot(previous, latest, target) {
+    if (!previous || !latest) return latest?.snapshot || state.lastNetState;
+    const frameMs = Math.max(1, latest.receivedAt - previous.receivedAt);
+    const aheadMs = clamp(target - latest.receivedAt, 0, 50);
+    const ratio = aheadMs / frameMs;
+    const current = latest.snapshot;
+    const prior = previous.snapshot;
+    return {
+      ...current,
+      elapsed: (current.elapsed || 0) + aheadMs / 1000,
+      players: current.players.map((player) => {
+        const old = prior.players.find((entry) => entry.slot === player.slot);
+        if (!old) return { ...player };
+        return { ...player, x: clamp(player.x + (player.x - old.x) * ratio, player.w / 2 + 4, W - player.w / 2 - 4) };
+      }),
+      balls: current.balls.map((ball, index) => {
+        const old = prior.balls[index];
+        if (!old || ball.bump) return { ...ball };
+        return {
+          ...ball,
+          x: clamp(ball.x + (ball.x - old.x) * ratio, -ball.r, W + ball.r),
+          y: clamp(ball.y + (ball.y - old.y) * ratio, -ball.r, H + ball.r)
+        };
+      })
     };
   }
 
