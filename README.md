@@ -6,7 +6,7 @@ The visual style is intentionally quiet: black court, white/gray paddles, small 
 
 ## Demo
 
-Play MonoRally at [monorally.prefect-sys.online](https://monorally.prefect-sys.online).
+Play MonoRally at [mono.prefect-sys.online](https://mono.prefect-sys.online).
 
 ## Features
 
