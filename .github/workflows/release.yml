@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate:
+    name: Release validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Start server and run smoke test
+        shell: bash
+        run: |
+          PORT=18787 node server/src/index.js > server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for attempt in {1..20}; do
+            curl --fail --silent http://127.0.0.1:18787/config.json && break
+            sleep 1
+          done
+          npm run test:smoke
+
+  publish:
+    name: Publish GHCR image and GitHub Release
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/monorally
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Highlights
+
+            - Reduced online render delay and moved local paddle rendering to prediction with bounded extrapolation.
+            - Added server-side late-input collision validation to prevent false misses on ordinary networks.
+            - Added input sequencing, congestion-aware input sending, and live latency feedback.
+            - Added quick-start guidance, mode tooltips, and a first-match control coach.
+
+            ## Container image
+
+            ```text
+            ghcr.io/chinmaykrishnroy/monorally:${{ github.ref_name }}
+            ```
+
+            Multi-architecture image: `linux/amd64`, `linux/arm64`.

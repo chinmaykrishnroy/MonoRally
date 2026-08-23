@@ -100,6 +100,27 @@ http://localhost:18787
 
 and keep `https://monorally.prefect-sys.online` in `CORS_ORIGINS`.
 
+## Prebuilt Release Image
+
+Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
+
+```bash
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.1.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.1.0
+```
+
+For K3s, apply the version-pinned example after the GitHub Release workflow completes:
+
+```bash
+kubectl apply -f deploy/k3s/monorally.yaml
+```
+
+The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
+
+## Continuous Delivery
+
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.1.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+
 ## Environment Variables
 
 Common options:
