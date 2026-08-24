@@ -18,6 +18,14 @@ export const config = {
   inputSendHz: 60,
   inputBufferLimitBytes: 2048,
   lateInputGraceMs: 220,
+  clockSyncIntervalMs: 5000,
+  paddleMaxSpeed: 4200,
+  paddleAcceleration: 30000,
+  paddleVelocityTransfer: 0.34,
+  ballSpinTransfer: 0.26,
+  ballSpinOffset: 280,
+  ballSpinMax: 1400,
+  ballSpinDecay: 1.8,
   networkHz: 30,
   physicsHz: 60
 };

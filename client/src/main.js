@@ -1,11 +1,14 @@
 import { COACH_KEY, H, W, clamp, config, settings } from "./core/shared.js";
 import { LocalGame } from "./game/local-game.js";
+import { createClockSync } from "./network/clock-sync.js";
 import { parseStatePacket as parseBinaryStatePacket } from "./network/protocol.js";
 import { createNetwork } from "./network/socket.js";
 import { clearResumeRoom, readResumeRoom, saveResumeRoom, sessionId } from "./platform/session.js";
 import { createRenderer, stagingSlots } from "./rendering/renderer.js";
 import { createAudio } from "./ui/audio.js";
 import { collectDom } from "./ui/dom.js";
+import { createLeaderboardUi } from "./ui/leaderboard.js";
+import { createPlayFlow } from "./ui/play-flow.js";
 import { createSettingsUi } from "./ui/settings-ui.js";
 
 const state = {
@@ -21,6 +24,7 @@ const state = {
   slot: -1,
   room: null,
   roster: [],
+  playerScores: new Map(),
   draggingSlot: false,
   quickMode: "1v1",
   lastNetState: null,
@@ -35,8 +39,13 @@ const state = {
   lastInputSentX: 0.5,
   inputSequence: 0,
   latencyMs: null,
-  pingSequence: 0,
-  pendingPings: new Map(),
+  networkDegraded: false,
+  lastSnapshotReceivedAt: 0,
+  clockOffsetMs: 0,
+  clockJitterMs: 0,
+  clockSynced: false,
+  predictedPaddleX: W / 2,
+  predictedPaddleVx: 0,
   keys: new Set(),
   effects: [],
   lastTime: performance.now(),
@@ -44,30 +53,27 @@ const state = {
   deferredInstall: null,
   thunderDone: false,
   gameOverSoundFor: "",
-  audio: null
+  audio: null,
+  autoFillAi: false
 };
 
 const SESSION_ID = sessionId();
 
 const elements = collectDom();
+const leaderboardUi = createLeaderboardUi({ one: elements.leaderboard1v1, two: elements.leaderboard2v2 });
+leaderboardUi.refresh();
 const {
   $,
-  aiBtn,
   bottomControlInput,
   canvas,
   copyRoomGameBtn,
-  copyRoomBtn,
   controlCoach,
-  create1,
-  create4,
   ctx,
   dismissCoach,
   fillAiBtn,
   game,
   infoBtn,
   installBtn,
-  joinPlayer,
-  joinSpectator,
   leaveBtn,
   menu,
   modeLabel,
@@ -75,14 +81,11 @@ const {
   networkBadge,
   nameInput,
   overlay,
-  quick1,
-  quick2,
-  quickBtn,
-  quickStatus,
   renderDelayInput,
   replayBtn,
   roomCode,
-  roomsRoot,
+  roomBadge,
+  roomValue,
   settingsBtn,
   settingsName,
   aiDifficulty,
@@ -90,76 +93,121 @@ const {
   statusEl,
   timerEl
 } = elements;
-const dom = { statusEl, timerEl, missesEl, replayBtn, fillAiBtn, nameInput };
+const dom = {
+  fillAiBtn,
+  matchResult: elements.matchResult,
+  missesEl,
+  nameInput,
+  replayBtn,
+  resultScore: elements.resultScore,
+  resultTitle: elements.resultTitle,
+  statusEl,
+  timerEl
+};
 const { playGameOver, playMiss, playPower, playRumble, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
-const { closeModal, ensureHandle, loadConfig, loadSettings, openModal, saveSettings, setQuickMode } = createSettingsUi({ elements, state });
+const { closeModal, ensureHandle, loadConfig, loadSettings, openModal, saveSettings } = createSettingsUi({ elements, state });
 const renderer = createRenderer({ ctx, state, dom, playRumble, nameForSlot });
+const clock = createClockSync({
+  intervalMs: () => config.clockSyncIntervalMs,
+  onUpdate: ({ offset, rtt, jitter, synced }) => {
+    state.clockOffsetMs = offset;
+    state.clockJitterMs = jitter;
+    state.clockSynced = synced;
+    state.latencyMs = Math.round(rtt);
+    state.networkDegraded = rtt >= 180 || jitter >= 50;
+    networkBadge.textContent = `${state.networkDegraded ? "! " : ""}${Math.round(rtt)} ms`;
+    networkBadge.dataset.quality = state.networkDegraded ? "poor" : rtt < 80 ? "good" : rtt < 160 ? "fair" : "slow";
+    networkBadge.dataset.tooltip = `Round trip ${Math.round(rtt)} ms; clock jitter ${Math.round(jitter)} ms`;
+  }
+});
 const network = createNetwork({
   handleServer,
   helloMessage,
   nameForSlot,
   onOpen: maybeResumeRoom,
   onClose: () => {
+    clock.stop();
     state.connectionState = "reconnecting";
-    if (!state.local) statusEl.textContent = "connection lost / reconnecting";
+    state.networkDegraded = true;
+    networkBadge.dataset.quality = "poor";
+    networkBadge.textContent = "! offline";
+    if (!state.local) statusEl.textContent = "Connection lost. Reconnecting...";
   },
   onConnecting: () => {
     state.connectionState = "connecting";
   },
   onProtocolError: () => {
-    statusEl.textContent = "connection protocol changed / refreshing";
+    statusEl.textContent = "The connection protocol changed. Refreshing...";
     location.reload();
   },
   parseBinaryStatePacket,
   state
 });
 const { connect, send } = network;
+const playFlow = createPlayFlow({
+  elements,
+  actions: {
+    copyRoomLink,
+    create: (mode, visibility) => {
+      unlockAudio();
+      send(helloMessage());
+      send({ t: "createRoom", mode, visibility });
+      playFlow.setStatus(`Creating a ${visibility} ${mode} room...`);
+    },
+    join: (code, role) => {
+      unlockAudio();
+      send(helloMessage());
+      send({ t: "joinRoom", code, role });
+      playFlow.setStatus(role === "spectator" ? `Opening room ${code}...` : `Joining room ${code}...`);
+    },
+    modeChanged: (mode) => {
+      state.quickMode = mode;
+      saveSettings();
+    },
+    practice: (mode) => {
+      unlockAudio();
+      if (mode === "1v1") {
+        startLocal("Practice / 1v1");
+        return;
+      }
+      state.autoFillAi = true;
+      send(helloMessage());
+      send({ t: "createRoom", mode: "2v2", visibility: "private" });
+      playFlow.setStatus("Preparing a 2v2 AI practice match...");
+    },
+    quick: (mode) => {
+      unlockAudio();
+      send(helloMessage());
+      send({ t: "quick", mode });
+    },
+    requestRooms: requestPublicRooms
+  }
+});
+
+async function requestPublicRooms() {
+  send({ t: "rooms" });
+  try {
+    const response = await fetch("/rooms.json", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    playFlow.updateRooms(payload.rooms || []);
+  } catch {
+    // WebSocket discovery remains active when the HTTP snapshot is unavailable.
+  }
+}
 
 connect();
 loadConfig();
 loadSettings();
+playFlow.setMode(state.quickMode);
 applyRoomFromUrl();
 bindUi();
 registerPwa();
 requestAnimationFrame(frame);
-window.setInterval(sendLatencyProbe, 2000);
 
 function bindUi() {
-  $("aiBtn").addEventListener("click", () => {
-    unlockAudio();
-    startLocal("AI mode");
-  });
-  $("quickBtn").addEventListener("click", () => {
-    unlockAudio();
-    send(helloMessage());
-    send({ t: "quick", mode: state.quickMode });
-    quickStatus.textContent = `waiting for ${state.quickMode} quick match...`;
-  });
-  quick1.addEventListener("click", () => setQuickMode("1v1"));
-  quick2.addEventListener("click", () => setQuickMode("2v2"));
-  $("create1").addEventListener("click", () => {
-    unlockAudio();
-    send(helloMessage());
-    send({ t: "createRoom", mode: "1v1" });
-  });
-  $("create4").addEventListener("click", () => {
-    unlockAudio();
-    send(helloMessage());
-    send({ t: "createRoom", mode: "2v2" });
-  });
-  $("joinPlayer").addEventListener("click", () => {
-    unlockAudio();
-    send(helloMessage());
-    send({ t: "joinRoom", code: roomCode.value, role: "player" });
-  });
-  $("joinSpectator").addEventListener("click", () => {
-    unlockAudio();
-    send(helloMessage());
-    send({ t: "joinRoom", code: roomCode.value, role: "spectator" });
-  });
   settingsBtn.addEventListener("click", () => openModal("settings"));
   infoBtn.addEventListener("click", () => openModal("info"));
-  copyRoomBtn.addEventListener("click", copyRoomLink);
   copyRoomGameBtn.addEventListener("click", copyRoomLink);
   replayBtn.addEventListener("click", replayGame);
   fillAiBtn.addEventListener("click", () => {
@@ -167,7 +215,7 @@ function bindUi() {
     statusEl.textContent = "filling empty seats...";
     send({ t: "fillAi" });
   });
-  $("leaveBtn").addEventListener("click", leaveGame);
+  leaveBtn.addEventListener("click", leaveGame);
   dismissCoach.addEventListener("click", dismissControlCoach);
   $("installBtn").addEventListener("click", async () => {
     if (!state.deferredInstall) return;
@@ -253,7 +301,7 @@ function bindUi() {
 }
 
 function helloMessage() {
-  return { t: "hello", name: ensureHandle(), sessionId: SESSION_ID, protocol: 2 };
+  return { t: "hello", name: ensureHandle(), sessionId: SESSION_ID, protocol: 4 };
 }
 
 function sendInput() {
@@ -266,46 +314,35 @@ function sendInput() {
   state.lastInputSentAt = now;
   state.lastInputSentX = state.inputX;
   state.inputSequence = (state.inputSequence + 1) & 0xffff;
-  const packet = new Uint8Array(5);
+  const packet = new Uint8Array(9);
   const encoded = Math.round(clamp(state.inputX, 0, 1) * 65535);
   packet[0] = 1;
   packet[1] = encoded >> 8;
   packet[2] = encoded & 255;
   packet[3] = state.inputSequence >> 8;
   packet[4] = state.inputSequence & 255;
+  const serverTime = clock.serverTimestamp32();
+  packet[5] = serverTime >>> 24;
+  packet[6] = serverTime >>> 16;
+  packet[7] = serverTime >>> 8;
+  packet[8] = serverTime & 255;
   state.ws.send(packet);
-}
-
-function sendLatencyProbe() {
-  if (state.ws?.readyState !== WebSocket.OPEN) return;
-  const id = ++state.pingSequence;
-  const at = performance.now();
-  state.pendingPings.set(id, at);
-  for (const [pendingId] of state.pendingPings) {
-    if (pendingId < id - 4) state.pendingPings.delete(pendingId);
-  }
-  send({ t: "ping", id, at });
 }
 
 function handleServer(msg) {
   if (!msg) return;
-  if (msg.t === "pong") {
-    const startedAt = state.pendingPings.get(msg.id);
-    if (Number.isFinite(startedAt)) {
-      state.latencyMs = Math.round(performance.now() - startedAt);
-      state.pendingPings.delete(msg.id);
-      networkBadge.textContent = `${state.latencyMs} ms`;
-      networkBadge.dataset.quality = state.latencyMs < 80 ? "good" : state.latencyMs < 160 ? "fair" : "slow";
-    }
-    return;
-  }
+  if (clock.handle(msg)) return;
   if (msg.t === "hello") state.clientId = msg.id;
-  if (msg.t === "quickWait") quickStatus.textContent = `waiting for ${msg.mode || state.quickMode} quick match...`;
-  if (msg.t === "quickFallback") quickStatus.textContent = "AI filled empty seats";
-  if (msg.t === "matched") quickStatus.textContent = `matched ${msg.mode || ""} / room ${msg.code}`;
-  if (msg.t === "roomCreated") roomCode.value = msg.code;
+  if (msg.t === "quickWait") playFlow.setStatus(`Finding a ${msg.mode || state.quickMode} quick match...`);
+  if (msg.t === "quickFallback") playFlow.setStatus("AI players filled the empty seats.");
+  if (msg.t === "matched") playFlow.setStatus(`Match found. Room ${msg.code}.`);
+  if (msg.t === "roomCreated") {
+    roomCode.value = msg.code;
+    playFlow.setStatus(`Room ${msg.code} is ready.`);
+  }
   if (msg.t === "roster") {
     state.roster = msg.players || [];
+    for (const player of state.roster) state.playerScores.set(player.slot, Math.max(0, Number(player.score) || 0));
     const self = state.roster.find((player) => player.id === state.clientId);
     if (self) {
       state.slot = self.slot;
@@ -316,7 +353,7 @@ function handleServer(msg) {
     state.slot = msg.slot;
     state.team = msg.team;
   }
-  if (msg.t === "resumed") statusEl.textContent = "rejoined match";
+  if (msg.t === "resumed") statusEl.textContent = "Rejoined the match.";
   if (msg.t === "joined") {
     state.online = true;
     state.local = false;
@@ -325,6 +362,7 @@ function handleServer(msg) {
     state.slot = Number.isInteger(msg.slot) ? msg.slot : 0;
     state.room = msg.code;
     state.roster = [];
+    state.playerScores.clear();
     state.thunderDone = false;
     state.gameOverSoundFor = "";
     state.netBuffer = [];
@@ -333,13 +371,23 @@ function handleServer(msg) {
     state.lastPowerStamp = "";
     state.lastMissTotal = 0;
     state.lastBumpSignature = "";
+    state.inputX = 0.5;
+    state.predictedPaddleX = W / 2;
+    state.predictedPaddleVx = 0;
     if (msg.role === "player") saveResumeRoom(msg.code);
-    showGame(`${msg.mode} / ${msg.role} / ${msg.code}`);
+    showGame(msg.role === "spectator" ? `Spectating · ${msg.mode}` : msg.mode);
+    roomBadge.hidden = false;
+    roomValue.textContent = msg.code;
     networkBadge.hidden = false;
     copyRoomGameBtn.hidden = msg.role !== "player";
-    statusEl.textContent = msg.role === "spectator" ? "spectating" : "waiting for players";
+    statusEl.textContent = msg.role === "spectator" ? "Spectating." : "Waiting for players...";
+    if (state.autoFillAi && msg.role === "player" && msg.mode === "2v2") {
+      state.autoFillAi = false;
+      send({ t: "fillAi" });
+      statusEl.textContent = "Preparing AI players...";
+    }
   }
-  if (msg.t === "rooms") renderRooms(msg.rooms || []);
+  if (msg.t === "rooms") playFlow.updateRooms(msg.rooms || []);
   if (msg.t === "state") {
     const matchJustStarted = state.lastNetState?.status !== "running" && msg.status === "running";
     const missTotal = Number(msg.misses?.top || 0) + Number(msg.misses?.bottom || 0);
@@ -356,6 +404,10 @@ function handleServer(msg) {
       pulseShake("impact-shake");
       hadNewHit = true;
     }
+    if (msg.lastHit && Number.isInteger(msg.lastHit.slot)) {
+      state.playerScores.set(msg.lastHit.slot, Math.max(0, Number(msg.lastHit.score) || 0));
+    }
+    for (const player of msg.players || []) player.score = state.playerScores.get(player.slot) || 0;
     maybePlayWall(msg, hadNewHit);
     const powerStamp = msg.lastPower ? `${msg.lastPower.type}:${msg.lastPower.at}` : "";
     if (powerStamp && powerStamp !== state.lastPowerStamp) {
@@ -363,7 +415,19 @@ function handleServer(msg) {
       playPower();
     }
     state.lastNetState = msg;
-    state.netBuffer.push({ receivedAt: performance.now(), snapshot: msg });
+    const receivedAt = performance.now();
+    state.lastSnapshotReceivedAt = receivedAt;
+    const timelineAt = msg.protocol >= 3 ? clock.localPerformanceForServerTimestamp(msg.serverNow) : receivedAt;
+    const ownPlayer = msg.players?.find((player) => player.slot === state.slot);
+    if (ownPlayer && state.role === "player") reconcilePredictedPaddle(ownPlayer.x);
+    const buffered = { receivedAt, timelineAt, snapshot: msg };
+    if (msg.status === "ended") {
+      state.netBuffer = [buffered];
+      state.keys.clear();
+      state.predictedPaddleVx = 0;
+    } else {
+      state.netBuffer.push(buffered);
+    }
     if (state.netBuffer.length > 24) state.netBuffer.splice(0, state.netBuffer.length - 24);
     maybePlayGameOver(msg);
     if (matchJustStarted && state.role === "player") showControlCoach();
@@ -375,10 +439,10 @@ function handleServer(msg) {
     state.lastBumpSignature = "";
     state.gameOverSoundFor = "";
     resetRoundVisuals();
-    statusEl.textContent = state.role === "spectator" ? "spectating" : "move with pointer, arrows, or A/D";
+    statusEl.textContent = state.role === "spectator" ? "Spectating." : "Drag to move, or use A/D or the arrow keys.";
   }
   if (msg.t === "error") {
-    quickStatus.textContent = msg.message;
+    playFlow.setStatus(msg.message);
     statusEl.textContent = msg.message;
   }
 }
@@ -393,12 +457,16 @@ function onlinePlaceholder(mode = "1v1") {
       slot: state.slot,
       x: state.inputX * W,
       w: 140,
+      vx: 0,
+      ack: 0,
       laser: false,
       emp: false
     });
   }
   return {
     t: "state",
+    protocol: 3,
+    serverNow: 0,
     mode,
     status: "waiting",
     elapsed: 0,
@@ -415,58 +483,22 @@ function onlinePlaceholder(mode = "1v1") {
   };
 }
 
-function renderRooms(rooms) {
-  const root = $("rooms");
-  if (!rooms.length) {
-    root.replaceChildren(emptyRoomNode());
-    return;
-  }
-  root.replaceChildren();
-  for (const room of rooms) {
-    const item = document.createElement("button");
-    item.className = "room";
-    const label = document.createElement("span");
-    const code = document.createElement("strong");
-    code.textContent = room.code;
-    label.append(code, ` ${room.mode} ${room.status}`);
-    const count = document.createElement("span");
-    count.textContent = `${room.players}/${room.maxPlayers} +${room.spectators}`;
-    item.append(label, count);
-    item.addEventListener("click", () => {
-      roomCode.value = room.code;
-      roomCode.focus();
-    });
-    root.appendChild(item);
-  }
-}
-
-function emptyRoomNode() {
-  const item = document.createElement("div");
-  item.className = "room";
-  const text = document.createElement("span");
-  text.textContent = "no open rooms";
-  const dash = document.createElement("span");
-  dash.textContent = "--";
-  item.append(text, dash);
-  return item;
-}
-
 async function copyRoomLink() {
   const code = roomCode.value.trim().toUpperCase();
   if (!code) {
-    quickStatus.textContent = "create or enter a room code first";
-    statusEl.textContent = "create or enter a room code first";
+    playFlow.setStatus("Create a room or enter a room code first.");
+    statusEl.textContent = "Create a room or enter a room code first.";
     return;
   }
   const url = `${location.origin}/?room=${encodeURIComponent(code)}`;
   try {
     await navigator.clipboard.writeText(url);
-    quickStatus.textContent = `copied room link ${code}`;
-    statusEl.textContent = `copied room link ${code}`;
+    playFlow.setStatus(`Copied the invite link for room ${code}.`);
+    statusEl.textContent = `Copied the invite link for room ${code}.`;
   } catch {
     roomCode.select();
-    quickStatus.textContent = `room code ${code} ready to copy`;
-    statusEl.textContent = `room code ${code} ready to copy`;
+    playFlow.setStatus(`Room code ${code} is selected and ready to copy.`);
+    statusEl.textContent = `Room code ${code} is selected and ready to copy.`;
   }
 }
 
@@ -477,13 +509,16 @@ function startLocal(label) {
   state.role = "player";
   state.team = "bottom";
   state.slot = 0;
+  state.predictedPaddleX = W / 2;
+  state.predictedPaddleVx = 0;
   state.localGame = newLocalGame();
   state.localGame.players[0].name = handle;
   resetRoundVisuals();
   showGame(label);
+  roomBadge.hidden = true;
   showControlCoach();
   networkBadge.hidden = true;
-  statusEl.textContent = "AI mode / 5 misses loses";
+  statusEl.textContent = "Practice match. Five misses loses.";
 }
 
 function showGame(label) {
@@ -519,6 +554,9 @@ function leaveGame() {
   state.lastNetState = null;
   state.netBuffer = [];
   state.localGame = null;
+  state.room = null;
+  state.role = "lobby";
+  state.autoFillAi = false;
   state.keys.clear();
   resetRoundVisuals();
   document.body.classList.remove("game-active");
@@ -528,7 +566,12 @@ function leaveGame() {
   fillAiBtn.hidden = true;
   copyRoomGameBtn.hidden = true;
   networkBadge.hidden = true;
+  roomBadge.hidden = true;
+  roomValue.textContent = "------";
+  dom.matchResult.classList.add("hidden");
   controlCoach.classList.add("hidden");
+  playFlow.reset();
+  leaderboardUi.refresh();
 }
 
 function replayGame() {
@@ -538,12 +581,12 @@ function replayGame() {
     resetRoundVisuals();
     replayBtn.hidden = true;
     modeLabel.textContent = label;
-    statusEl.textContent = "AI mode / replay";
+    statusEl.textContent = "Practice replay.";
     return;
   }
   if (state.online && state.role === "player") {
     replayBtn.hidden = true;
-    statusEl.textContent = "requesting replay...";
+    statusEl.textContent = "Requesting a replay...";
     send({ t: "replayRoom" });
   }
 }
@@ -553,6 +596,7 @@ function resetRoundVisuals() {
   state.gameOverSoundFor = "";
   state.effects = [];
   state.keys.clear();
+  dom.matchResult.classList.add("hidden");
   renderer.clearThunder();
 }
 
@@ -569,9 +613,18 @@ function newLocalGame() {
 
 function maybeResumeRoom() {
   state.connectionState = "online";
+  clock.reset();
+  clock.start(send);
   if (state.local || state.pending.length) return;
   const code = readResumeRoom();
-  if (code) send({ t: "resumeRoom", code });
+  if (!code) return;
+  send({ t: "resumeRoom", code });
+  window.setTimeout(() => {
+    if (!state.online && state.ws?.readyState === WebSocket.OPEN && readResumeRoom() === code) send({ t: "resumeRoom", code });
+  }, 350);
+  window.setTimeout(() => {
+    if (!state.online && state.ws?.readyState === WebSocket.OPEN && readResumeRoom() === code) send({ t: "resumeRoom", code });
+  }, 1100);
 }
 
 function frame(now) {
@@ -586,11 +639,46 @@ function frame(now) {
       state.inputX = clamp(state.inputX, 0, 1);
       if (state.online && state.role === "player") sendInput();
     }
+    if (state.online && state.role === "player" && state.lastNetState?.status === "running") {
+      advancePredictedPaddle(dt);
+      sendInput();
+    }
     renderer.draw(state.localGame?.snapshot() || renderer.interpolatedNetState() || state.lastNetState);
   } catch (error) {
     statusEl.textContent = `game error: ${error.message}`;
   }
   requestAnimationFrame(frame);
+}
+
+function advancePredictedPaddle(dt) {
+  const own = state.lastNetState?.players?.find((player) => player.slot === state.slot);
+  const width = own?.w || 140;
+  const minX = width / 2 + 4;
+  const maxX = W - width / 2 - 4;
+  const target = clamp(state.inputX * W, minX, maxX);
+  const maxSpeed = Number(config.paddleMaxSpeed) || 4200;
+  const acceleration = Number(config.paddleAcceleration) || 30000;
+  const desiredVelocity = clamp((target - state.predictedPaddleX) * 18, -maxSpeed, maxSpeed);
+  const step = acceleration * dt;
+  if (state.predictedPaddleVx < desiredVelocity) state.predictedPaddleVx = Math.min(desiredVelocity, state.predictedPaddleVx + step);
+  else state.predictedPaddleVx = Math.max(desiredVelocity, state.predictedPaddleVx - step);
+  const next = clamp(state.predictedPaddleX + state.predictedPaddleVx * dt, minX, maxX);
+  if ((target - state.predictedPaddleX) * (target - next) <= 0) {
+    state.predictedPaddleX = target;
+    state.predictedPaddleVx = 0;
+  } else {
+    state.predictedPaddleX = next;
+  }
+}
+
+function reconcilePredictedPaddle(authoritativeX) {
+  if (!Number.isFinite(authoritativeX)) return;
+  if (!Number.isFinite(state.predictedPaddleX)) {
+    state.predictedPaddleX = authoritativeX;
+    return;
+  }
+  const error = authoritativeX - state.predictedPaddleX;
+  state.predictedPaddleX += error * (Math.abs(error) > 180 ? 0.55 : 0.08);
 }
 
 function handleBottomHalfControl(event) {
@@ -644,7 +732,7 @@ function isPlayingActive() {
 }
 
 function hitEffect(x, y) {
-  state.effects.push({ x, y, r: 8, life: 18, max: 18, spin: Math.random() * Math.PI * 2 });
+  state.effects.push({ x, y, r: 8, createdAt: performance.now(), duration: 320, spin: Math.random() * Math.PI * 2 });
 }
 
 function nameForSlot(slot) {
@@ -699,5 +787,5 @@ function pulseShake(className) {
 function applyRoomFromUrl() {
   const code = new URLSearchParams(location.search).get("room");
   if (!code) return;
-  roomCode.value = code.toUpperCase().replace(/[^\w-]/g, "").slice(0, 6);
+  playFlow.openPrivateCode(code);
 }

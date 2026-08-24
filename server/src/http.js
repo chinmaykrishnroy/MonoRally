@@ -21,7 +21,7 @@ const MIME = {
 
 const NO_STORE_EXTENSIONS = new Set([".html", ".js", ".css", ".webmanifest"]);
 
-export function createHttpServer() {
+export function createHttpServer({ leaderboard, publicRooms } = {}) {
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -47,6 +47,29 @@ export function createHttpServer() {
         "Cache-Control": "no-store"
       });
       res.end(JSON.stringify(publicConfig()));
+      return;
+    }
+    if (requested === "/leaderboard.json") {
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      res.end(
+        JSON.stringify({
+          boards: {
+            "1v1": leaderboard?.top("1v1", 10) || [],
+            "2v2": leaderboard?.top("2v2", 10) || []
+          }
+        })
+      );
+      return;
+    }
+    if (requested === "/rooms.json") {
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      res.end(JSON.stringify({ rooms: publicRooms?.() || [] }));
       return;
     }
 

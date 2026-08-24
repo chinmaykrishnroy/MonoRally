@@ -14,7 +14,7 @@ export default defineConfig({
       QUICK_MATCH_FALLBACK_MS: "1000"
     },
     url: "http://127.0.0.1:19087",
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 15000
   },
   projects: [
@@ -40,6 +40,14 @@ export default defineConfig({
         hasTouch: true,
         userAgent:
           "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+      }
+    },
+    {
+      name: "tablet",
+      use: {
+        viewport: { width: 1024, height: 768 },
+        deviceScaleFactor: 2,
+        hasTouch: true
       }
     }
   ]

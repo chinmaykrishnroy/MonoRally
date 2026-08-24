@@ -10,8 +10,8 @@ export class LocalGame {
     this.winner = null;
     this.misses = { top: 0, bottom: 0 };
     this.players = [
-      { id: "human", name: "you", team: "bottom", x: W / 2, targetX: W / 2, w: 140, laserActiveUntil: 0, laserFadeUntil: 0, empActiveUntil: 0, empFadeUntil: 0 },
-      { id: "ai", name: "ai", team: "top", x: W / 2, targetX: W / 2, w: 140, laserActiveUntil: 0, laserFadeUntil: 0, empActiveUntil: 0, empFadeUntil: 0 }
+      { id: "human", name: "you", team: "bottom", x: W / 2, prevX: W / 2, vx: 0, returns: 0, targetX: W / 2, w: 140, laserActiveUntil: 0, laserFadeUntil: 0, empActiveUntil: 0, empFadeUntil: 0 },
+      { id: "ai", name: "ai", team: "top", x: W / 2, prevX: W / 2, vx: 0, returns: 0, targetX: W / 2, w: 140, laserActiveUntil: 0, laserFadeUntil: 0, empActiveUntil: 0, empFadeUntil: 0 }
     ];
     this.balls = [];
     this.power = null;
@@ -22,11 +22,12 @@ export class LocalGame {
     this.serveTeam = "top";
     this.pendingCountdown = false;
     this.lastMissTeam = null;
+    this.nextBallId = 1;
     this.beginCountdown("top");
   }
 
   makeBall(direction = Math.random() > 0.5 ? 1 : -1, x = W / 2, y = H / 2) {
-    return { x, y, r: 8, vx: rand(-160, 160), vy: direction * 430, speed: 430, lastTouch: null, bump: false };
+    return { id: this.allocateBallId(), x, y, r: 8, vx: rand(-160, 160), vy: direction * 430, speed: 430, curve: 0, lastTouch: null, touchMask: 0, bump: false };
   }
 
   makeServeBall(team) {
@@ -38,7 +39,7 @@ export class LocalGame {
     const dx = target.x - x;
     const dy = targetY - y;
     const mag = Math.hypot(dx, dy) || 1;
-    return { x, y, r: 8, vx: (dx / mag) * speed, vy: (dy / mag) * speed, speed, lastTouch: null, bump: true };
+    return { id: this.allocateBallId(), x, y, r: 8, vx: (dx / mag) * speed, vy: (dy / mag) * speed, speed, curve: 0, lastTouch: null, touchMask: 0, bump: true };
   }
 
   update(dt) {
@@ -48,8 +49,22 @@ export class LocalGame {
 
     for (const p of this.players) {
       p.w = 140 + 140 * this.laserStrength(p);
-      p.x += (p.targetX - p.x) * Math.min(1, dt * 18);
-      p.x = clamp(p.x, p.w / 2 + 4, W - p.w / 2 - 4);
+      const minX = p.w / 2 + 4;
+      const maxX = W - p.w / 2 - 4;
+      const target = clamp(p.targetX, minX, maxX);
+      const maxSpeed = Number(config.paddleMaxSpeed) || 4200;
+      const acceleration = Number(config.paddleAcceleration) || 30000;
+      const desiredVelocity = clamp((target - p.x) * 18, -maxSpeed, maxSpeed);
+      const step = acceleration * dt;
+      p.prevX = p.x;
+      p.vx = p.vx < desiredVelocity ? Math.min(desiredVelocity, p.vx + step) : Math.max(desiredVelocity, p.vx - step);
+      const nextX = clamp(p.x + p.vx * dt, minX, maxX);
+      if ((target - p.x) * (target - nextX) <= 0) {
+        p.x = target;
+        p.vx = 0;
+      } else {
+        p.x = nextX;
+      }
     }
 
     if (this.countdownUntil > this.elapsed) return;
@@ -81,6 +96,8 @@ export class LocalGame {
       let desired = baseSpeed;
       desired *= 1 - 0.55 * this.empSlowStrength(ball);
       ball.speed += (desired - ball.speed) * Math.min(1, dt * 4.5);
+      ball.curve = (Number(ball.curve) || 0) * Math.exp(-(Number(config.ballSpinDecay) || 1.8) * dt);
+      ball.vx += ball.curve * dt;
       const mag = Math.hypot(ball.vx, ball.vy) || 1;
       ball.vx = (ball.vx / mag) * ball.speed;
       ball.vy = (ball.vy / mag) * ball.speed;
@@ -91,6 +108,7 @@ export class LocalGame {
       if (ball.x < ball.r || ball.x > W - ball.r) {
         ball.x = clamp(ball.x, ball.r, W - ball.r);
         ball.vx *= -1;
+        ball.curve *= -1;
         ball.bump = true;
         this.deps.hitEffect(ball.x, ball.y);
         this.deps.playWall?.();
@@ -105,6 +123,9 @@ export class LocalGame {
     if ((this.misses.top >= this.missLimit || this.misses.bottom >= this.missLimit) && this.misses.top !== this.misses.bottom) {
       this.status = "ended";
       this.winner = this.misses.top > this.misses.bottom ? "bottom" : "top";
+      this.balls = [];
+      this.power = null;
+      this.countdownUntil = 0;
     }
     if (this.status === "running" && this.pendingCountdown && this.balls.length === 0) {
       this.beginCountdown(this.lastMissTeam || "top");
@@ -114,39 +135,80 @@ export class LocalGame {
   }
 
   collide(player, ball) {
-    const y = player.team === "top" ? 28 : H - 28;
     const toward = player.team === "top" ? ball.vy < 0 : ball.vy > 0;
     if (!toward) return;
-    const oldX = Number.isFinite(ball.prevX) ? ball.prevX : ball.x;
-    const oldY = Number.isFinite(ball.prevY) ? ball.prevY : ball.y;
-    const nearNow = Math.abs(ball.y - y) <= ball.r + 12;
-    const denom = ball.y - oldY;
-    const t = Math.abs(denom) > 0.001 ? (y - oldY) / denom : 1;
-    const crossed = t >= -0.08 && t <= 1.08;
-    const hitX = crossed ? oldX + (ball.x - oldX) * clamp(t, 0, 1) : ball.x;
-    const center = this.paddleCollisionCenter(player, hitX);
-    if (!nearNow && !crossed) return;
-    if (hitX < center - player.w / 2 - ball.r - 16 || hitX > center + player.w / 2 + ball.r + 16) return;
+    const contact = this.sweptPaddleContact(player, ball);
+    if (!contact) return;
+    const { hitX, t } = contact;
+    const center = player.prevX + (player.x - player.prevX) * t;
+    const y = player.team === "top" ? 28 : H - 28;
+    const contactY = y + (player.team === "top" ? 9 + ball.r + 1 : -9 - ball.r - 1);
 
-    if (player.id === "human") player.x = center;
     ball.x = hitX;
     const offset = clamp((hitX - center) / (player.w / 2), -1, 1);
-    ball.vx += offset * 260;
-    ball.vy = Math.abs(ball.vy) * (player.team === "top" ? 1 : -1);
-    ball.y = y + (player.team === "top" ? ball.r + 11 : -ball.r - 11);
+    const speed = Math.max(ball.speed, Math.hypot(ball.vx, ball.vy));
+    const maxHorizontal = speed * Math.sin((68 * Math.PI) / 180);
+    ball.vx = clamp(
+      ball.vx * 0.42 + offset * speed * 0.72 + player.vx * (Number(config.paddleVelocityTransfer) || 0.34),
+      -maxHorizontal,
+      maxHorizontal
+    );
+    ball.vy = Math.max(speed * 0.36, Math.sqrt(Math.max(0, speed * speed - ball.vx * ball.vx))) * (player.team === "top" ? 1 : -1);
+    ball.curve = clamp(
+      player.vx * (Number(config.ballSpinTransfer) || 0.26) + offset * (Number(config.ballSpinOffset) || 280),
+      -(Number(config.ballSpinMax) || 1400),
+      Number(config.ballSpinMax) || 1400
+    );
+    ball.speed = Math.hypot(ball.vx, ball.vy);
+    ball.y = contactY;
+    const touchBit = player.team === "top" ? 1 : 2;
+    const establishedRally = (Number(ball.touchMask) || 0) === 3;
+    ball.touchMask = (Number(ball.touchMask) || 0) | touchBit;
     ball.lastTouch = player.id;
+    player.returns += establishedRally ? 1 : 0;
     ball.bump = true;
-    this.lastHit = { x: ball.x, y, at: this.elapsed };
+    this.lastHit = {
+      x: ball.x,
+      y,
+      at: this.elapsed,
+      slot: player.id === "human" ? 0 : 1,
+      intensity: clamp(Math.abs(offset) * 0.45 + Math.abs(player.vx) / (Number(config.paddleMaxSpeed) || 4200), 0.2, 1)
+    };
     this.deps.hitEffect(ball.x, ball.y);
     this.deps.playStrike(Math.abs(offset));
   }
 
-  paddleCollisionCenter(player, hitX) {
-    const current = clamp(player.x, player.w / 2 + 4, W - player.w / 2 - 4);
-    if (player.id !== "human" || !Number.isFinite(player.targetX)) return current;
-    const target = clamp(player.targetX, player.w / 2 + 4, W - player.w / 2 - 4);
-    const assisted = current + clamp(target - current, -120, 120);
-    return clamp(hitX, Math.min(current, assisted), Math.max(current, assisted));
+  sweptPaddleContact(player, ball) {
+    const oldX = Number.isFinite(ball.prevX) ? ball.prevX : ball.x;
+    const oldY = Number.isFinite(ball.prevY) ? ball.prevY : ball.y;
+    const paddleY = player.team === "top" ? 28 : H - 28;
+    const radius = 9 + ball.r + 6;
+    const straightHalf = Math.max(0, player.w / 2 - 9);
+    const intersects = (t) => {
+      const center = player.prevX + (player.x - player.prevX) * t;
+      const relativeX = oldX + (ball.x - oldX) * t - center;
+      const relativeY = oldY + (ball.y - oldY) * t - paddleY;
+      const edgeX = Math.max(0, Math.abs(relativeX) - straightHalf);
+      return edgeX * edgeX + relativeY * relativeY <= radius * radius;
+    };
+    let previousT = 0;
+    if (intersects(0)) return { t: 0, hitX: oldX };
+    for (let step = 1; step <= 16; step += 1) {
+      const t = step / 16;
+      if (!intersects(t)) {
+        previousT = t;
+        continue;
+      }
+      let low = previousT;
+      let high = t;
+      for (let iteration = 0; iteration < 8; iteration += 1) {
+        const mid = (low + high) / 2;
+        if (intersects(mid)) high = mid;
+        else low = mid;
+      }
+      return { t: high, hitX: oldX + (ball.x - oldX) * high };
+    }
+    return null;
   }
 
   chooseAiBall() {
@@ -167,7 +229,7 @@ export class LocalGame {
     if (!ball || Math.abs(ball.vy) < 0.001) return ball?.x ?? W / 2;
     const time = (targetY - ball.y) / ball.vy;
     if (time <= 0) return ball.x;
-    return reflectX(ball.x + ball.vx * time, ball.r);
+    return reflectX(ball.x + ball.vx * time + 0.5 * (ball.curve || 0) * time * time, ball.r);
   }
 
   powerHit(ball) {
@@ -212,6 +274,12 @@ export class LocalGame {
     this.balls = [this.makeServeBall(this.serveTeam || "top")];
   }
 
+  allocateBallId() {
+    const id = this.nextBallId;
+    this.nextBallId = id >= 255 ? 1 : id + 1;
+    return id;
+  }
+
   countdownValue() {
     if (!this.countdownUntil || this.countdownUntil <= this.elapsed) return 0;
     return clamp(Math.ceil((this.countdownUntil - this.elapsed) * this.speedMultiplier()), 1, 3);
@@ -252,8 +320,8 @@ export class LocalGame {
       missLimit: this.missLimit,
       misses: this.misses,
       winner: this.winner,
-      players: this.players.map((p, slot) => ({ id: p.id, name: p.name, team: p.team, slot, x: p.x, w: p.w, laser: this.laserStrength(p) > 0, emp: this.empStrength(p) > 0 })),
-      balls: this.balls.map((b) => ({ x: b.x, y: b.y, r: b.r, bump: b.bump })),
+      players: this.players.map((p, slot) => ({ id: p.id, name: p.name, team: p.team, slot, x: p.x, vx: p.vx, w: p.w, score: p.returns, laser: this.laserStrength(p) > 0, emp: this.empStrength(p) > 0 })),
+      balls: this.balls.map((b) => ({ id: b.id, x: b.x, y: b.y, r: b.r, vx: b.vx, vy: b.vy, curve: b.curve || 0, bump: b.bump, pending: false })),
       power: this.power,
       lastHit: this.lastHit && this.elapsed - this.lastHit.at < 0.16 ? this.lastHit : null,
       lastPower: this.lastPower && this.elapsed - this.lastPower.at < 1.8 ? this.lastPower : null,

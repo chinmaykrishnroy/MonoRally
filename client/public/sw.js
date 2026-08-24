@@ -1,4 +1,4 @@
-const CACHE = "monorally-v20";
+const CACHE = "monorally-v24";
 const ASSETS = [
   "/",
   "/index.html",
@@ -7,11 +7,16 @@ const ASSETS = [
   "/src/core/shared.js",
   "/src/game/local-game.js",
   "/src/network/protocol.js",
+  "/src/network/clock-sync.js",
   "/src/network/socket.js",
   "/src/platform/session.js",
   "/src/rendering/renderer.js",
+  "/src/rendering/trajectory.js",
+  "/src/rendering/viewport.js",
   "/src/ui/audio.js",
   "/src/ui/dom.js",
+  "/src/ui/leaderboard.js",
+  "/src/ui/play-flow.js",
   "/src/ui/settings-ui.js",
   "/manifest.webmanifest",
   "/icon.svg",

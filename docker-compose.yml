@@ -8,6 +8,8 @@ services:
       - .env
     ports:
       - "${APP_HOST_PORT:-18787}:${PORT:-8787}"
+    volumes:
+      - monorally_data:/data
     init: true
     restart: unless-stopped
     healthcheck:
@@ -22,3 +24,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  monorally_data:

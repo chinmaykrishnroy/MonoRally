@@ -4,10 +4,14 @@ import {
   HEARTBEAT_MS,
   H,
   INPUT_HISTORY_MS,
+  INPUT_FUTURE_TOLERANCE_MS,
   INPUT_RATE_LIMIT_PER_SECOND,
   INPUT_PACKET,
+  LEADERBOARD_FILE,
   MAX_SPECTATORS,
   PORT,
+  PADDLE_ACCELERATION,
+  PADDLE_MAX_SPEED,
   QUICK_AI_DIFFICULTY,
   QUICK_MATCH_FALLBACK_MS,
   TICK,
@@ -16,8 +20,11 @@ import {
 import { createBroadcasters } from "./broadcasting.js";
 import { attachWebSocketServer } from "./connection.js";
 import { createHttpServer } from "./http.js";
+import { epochNow, normalizeInputTime, recordInputSample } from "./input-timeline.js";
+import { createLeaderboard } from "./leaderboard.js";
 import {
   advanceBalls,
+  advancePaddles,
   beginCountdown,
   checkWin,
   countdownValue,
@@ -43,7 +50,8 @@ const { broadcastRooms, broadcastRoster, pruneRooms, publicRooms, publishState }
   stateMechanics
 });
 
-const server = createHttpServer();
+const leaderboard = createLeaderboard(LEADERBOARD_FILE);
+const server = createHttpServer({ leaderboard, publicRooms });
 attachWebSocketServer(server, {
   broadcastRooms,
   clients,
@@ -71,16 +79,29 @@ setInterval(() => {
 }, HEARTBEAT_MS);
 
 function handleMessage(client, msg) {
+  if (msg.t === "clockProbe") {
+    const t1 = epochNow();
+    send(client, {
+      t: "clockProbe",
+      id: Number(msg.id) || 0,
+      t0: Number(msg.t0) || 0,
+      t1,
+      t2: epochNow(),
+      groupId: Number(msg.groupId) || 0,
+      groupIndex: Number(msg.groupIndex) === 1 ? 1 : 0
+    });
+    return;
+  }
   if (msg.t === "hello") {
     client.teamPreference = requestedTeam(msg.name);
     client.name = cleanName(msg.name);
     client.sessionId = cleanSession(msg.sessionId);
-    client.protocol = Number(msg.protocol) >= 2 ? 2 : 1;
+    client.protocol = Math.max(1, Math.min(4, Number(msg.protocol) || 1));
     send(client, { t: "hello", id: client.id, name: client.name, port: PORT, protocol: client.protocol });
   }
   if (msg.t === "quick") joinQuick(client, msg.mode === "2v2" ? "2v2" : "1v1");
   if (msg.t === "cancelQuick") leaveQuick(client);
-  if (msg.t === "createRoom") createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1");
+  if (msg.t === "createRoom") createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1", msg.visibility === "public" ? "public" : "private");
   if (msg.t === "joinRoom") joinRoom(client, String(msg.code || "").toUpperCase(), msg.role === "spectator");
   if (msg.t === "resumeRoom") resumeRoom(client, String(msg.code || "").toUpperCase());
   if (msg.t === "leaveRoom") leaveRoom(client);
@@ -88,7 +109,7 @@ function handleMessage(client, msg) {
   if (msg.t === "selectSlot") selectSlot(client, Number(msg.slot));
   if (msg.t === "fillAi") fillRoomWithAi(client);
   if (msg.t === "input") {
-    updateClientInput(client, Number(msg.x), Number.isInteger(msg.sequence) ? msg.sequence : null);
+    updateClientInput(client, Number(msg.x), Number.isInteger(msg.sequence) ? msg.sequence : null, Number.isInteger(msg.serverTime) ? msg.serverTime : null);
   }
   if (msg.t === "ping") send(client, { t: "pong", id: Number(msg.id) || 0, at: Number(msg.at) || 0 });
   if (msg.t === "rooms") send(client, { t: "rooms", rooms: publicRooms() });
@@ -98,10 +119,11 @@ function handleBinaryMessage(client, data) {
   if (data.length < 3 || data[0] !== INPUT_PACKET) return;
   const encoded = data.readUInt16BE(1);
   const sequence = data.length >= 5 ? data.readUInt16BE(3) : null;
-  updateClientInput(client, encoded / 65535, sequence);
+  const serverTime = data.length >= 9 ? data.readUInt32BE(5) : null;
+  updateClientInput(client, encoded / 65535, sequence, serverTime);
 }
 
-function updateClientInput(client, x, sequence = null) {
+function updateClientInput(client, x, sequence = null, encodedServerTime = null) {
   if (!acceptInputSequence(client, sequence)) return;
   if (!allowClientInput(client)) return;
   const now = performance.now();
@@ -111,9 +133,22 @@ function updateClientInput(client, x, sequence = null) {
     if (player) {
       player.targetX = client.inputX * W;
       player.lastInputAt = now;
-      player.inputHistory ??= [];
-      player.inputHistory.push({ x: player.targetX, at: now, sequence });
-      player.inputHistory = player.inputHistory.filter((input) => now - input.at <= INPUT_HISTORY_MS).slice(-24);
+      const eventAt = normalizeInputTime(encodedServerTime, now, INPUT_HISTORY_MS, INPUT_FUTURE_TOLERANCE_MS);
+      const sampleDelay = clamp(now - eventAt, 0, INPUT_HISTORY_MS);
+      if (Number.isFinite(player.inputDelayMs)) {
+        const deviation = Math.abs(sampleDelay - player.inputDelayMs);
+        player.inputDelayMs += (sampleDelay - player.inputDelayMs) * 0.12;
+        player.inputJitterMs = (Number(player.inputJitterMs) || 0) * 0.82 + deviation * 0.18;
+      } else {
+        player.inputDelayMs = sampleDelay;
+        player.inputJitterMs = 0;
+      }
+      recordInputSample(
+        player,
+        { x: player.targetX, eventAt, receivedAt: now, sequence },
+        { acceleration: PADDLE_ACCELERATION, historyMs: INPUT_HISTORY_MS, maxSpeed: PADDLE_MAX_SPEED, now }
+      );
+      player.lastProcessedInputSequence = sequence;
     }
   }
 }
@@ -182,7 +217,7 @@ function finalizeQuickQueue(mode) {
 
 function startQuickMatch(mode, realClients) {
   if (!realClients.length) return;
-  const room = makeRoom(mode, true);
+  const room = makeRoom(mode, true, "public");
   room.quickAiDifficulty = QUICK_AI_DIFFICULTY;
   rooms.set(room.code, room);
 
@@ -215,10 +250,10 @@ function slotAssignment(slot) {
   return { slot, team: slot < 2 ? "bottom" : "top" };
 }
 
-function createRoom(client, mode) {
+function createRoom(client, mode, visibility = "private") {
   leaveQuick(client);
   leaveRoom(client);
-  const room = makeRoom(mode, false);
+  const room = makeRoom(mode, false, visibility);
   rooms.set(room.code, room);
   addPlayer(room, client);
   broadcastRoster(room);
@@ -327,8 +362,13 @@ function addPlayer(room, client, assignment = null) {
     disconnectedAt: 0,
     x,
     targetX: x,
+    prevX: x,
+    vx: 0,
+    returns: 0,
     inputHistory: [],
     lastInputAt: 0,
+    lastInputEventAt: 0,
+    lastProcessedInputSequence: null,
     laserActiveUntil: 0,
     laserFadeUntil: 0,
     empActiveUntil: 0,
@@ -357,8 +397,13 @@ function addBot(room, slot, name = generatedName()) {
     disconnectedAt: 0,
     x,
     targetX: x,
+    prevX: x,
+    vx: 0,
+    returns: 0,
     inputHistory: [],
     lastInputAt: 0,
+    lastInputEventAt: 0,
+    lastProcessedInputSequence: null,
     laserActiveUntil: 0,
     laserFadeUntil: 0,
     empActiveUntil: 0,
@@ -488,16 +533,26 @@ function disconnectFromRoom(client) {
 function checkPresenceWin(room) {
   if (room.mode !== "2v2") {
     const remaining = room.players.find((p) => !p.disconnected);
-    room.status = "ended";
-    room.winner = remaining?.team || null;
+    endRoomByPresence(room, remaining?.team || null);
     return;
   }
 
   const activeTop = room.players.some((p) => p.team === "top" && !p.disconnected);
   const activeBottom = room.players.some((p) => p.team === "bottom" && !p.disconnected);
   if (activeTop && activeBottom) return;
+  endRoomByPresence(room, activeBottom ? "bottom" : activeTop ? "top" : null);
+}
+
+function endRoomByPresence(room, winner) {
   room.status = "ended";
-  room.winner = activeBottom ? "bottom" : activeTop ? "top" : null;
+  room.winner = winner;
+  room.endedAt = performance.now();
+  room.balls = [];
+  room.power = null;
+  room.countdownUntil = 0;
+  room.pendingCountdown = false;
+  room.nextPublishAt = 0;
+  leaderboard.recordRoom(room);
 }
 
 function tickRoom(room) {
@@ -514,12 +569,7 @@ function tickRoom(room) {
   const elapsed = (now - room.startedAt) / 1000;
   updateBotTargets(room, now, dt);
 
-  for (const p of room.players) {
-    if (p.disconnected) continue;
-    const agility = laserStrength(p, now) > 0 ? 18 : 22;
-    p.x += (p.targetX - p.x) * Math.min(1, dt * agility);
-    p.x = clamp(p.x, paddleWidth(p, now) / 2 + 4, W - paddleWidth(p, now) / 2 - 4);
-  }
+  advancePaddles(room, now, dt);
 
   if (room.countdownUntil > now) {
     publishState(room, now);
@@ -542,7 +592,8 @@ function tickRoom(room) {
   }
 
   advanceBalls(room, now, dt);
-  checkWin(room);
+  checkWin(room, now);
+  leaderboard.recordRoom(room);
   if (room.status === "running" && room.pendingCountdown && room.balls.length === 0) {
     beginCountdown(room, now, room.mode === "2v2" ? "both" : room.lastMissTeam || "top");
     room.pendingCountdown = false;

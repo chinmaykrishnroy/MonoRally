@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 import { MISS_LIMIT_1V1, MISS_LIMIT_2V2, POWERUP_MAX_MS, POWERUP_MIN_MS, W } from "./config.js";
 import { beginCountdown } from "./physics.js";
+import { seedInputTimeline } from "./input-timeline.js";
 import { rand, startingXForSlot } from "./utils.js";
 
 export function createRoomLifecycle(rooms) {
-  function makeRoom(mode, quick) {
+  function makeRoom(mode, quick, visibility = quick ? "matchmaking" : "private") {
     return {
       code: uniqueCode(),
       quick,
+      visibility,
       mode,
       maxPlayers: mode === "2v2" ? 4 : 2,
       missLimit: mode === "2v2" ? MISS_LIMIT_2V2 : MISS_LIMIT_1V1,
@@ -17,7 +19,9 @@ export function createRoomLifecycle(rooms) {
       startedAt: 0,
       lastTick: performance.now(),
       misses: { top: 0, bottom: 0 },
+      returns: { top: 0, bottom: 0 },
       balls: [],
+      nextBallId: 1,
       power: null,
       nextPowerAt: performance.now() + 8000,
       nextPublishAt: 0,
@@ -25,7 +29,8 @@ export function createRoomLifecycle(rooms) {
       serveTeam: "top",
       pendingCountdown: false,
       lastMissTeam: null,
-      winner: null
+      winner: null,
+      leaderboardRecorded: false
     };
   }
 
@@ -41,7 +46,9 @@ export function createRoomLifecycle(rooms) {
     room.startedAt = performance.now();
     room.lastTick = room.startedAt;
     room.misses = { top: 0, bottom: 0 };
+    room.returns = { top: 0, bottom: 0 };
     room.winner = null;
+    room.leaderboardRecorded = false;
     room.power = null;
     room.lastHit = null;
     room.lastPower = null;
@@ -49,6 +56,7 @@ export function createRoomLifecycle(rooms) {
     room.lastMissTeam = null;
     resetPlayers(room);
     room.balls = [];
+    room.nextBallId = 1;
     room.nextPowerAt = performance.now() + rand(POWERUP_MIN_MS, POWERUP_MAX_MS);
     room.nextPublishAt = room.startedAt;
     beginCountdown(room, room.startedAt, room.mode === "2v2" ? "both" : "top");
@@ -63,8 +71,12 @@ export function createRoomLifecycle(rooms) {
         player.x = W / 2;
       }
       player.targetX = player.x;
-      player.inputHistory = [];
+      player.prevX = player.x;
+      player.vx = 0;
+      player.returns = 0;
+      seedInputTimeline(player, room.startedAt);
       player.lastInputAt = 0;
+      player.lastProcessedInputSequence = null;
       player.laserActiveUntil = 0;
       player.laserFadeUntil = 0;
       player.empActiveUntil = 0;

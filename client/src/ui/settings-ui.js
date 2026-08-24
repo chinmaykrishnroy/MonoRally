@@ -23,7 +23,7 @@ export function createSettingsUi({ elements, state }) {
       Object.assign(config, await res.json());
       loadSettings();
       if (Number.isFinite(Number(config.renderDelayMs))) state.renderDelay = Number(config.renderDelayMs);
-      quickStatus.textContent = `quick match waits ${Math.round(config.quickMatchFallbackMs / 1000)}s, then fills empty seats with ${config.quickAiDifficulty || "medium"} AI`;
+      quickStatus.textContent = `Quick match waits ${Math.round(config.quickMatchFallbackMs / 1000)} seconds, then fills empty seats with ${config.quickAiDifficulty || "medium"} AI.`;
     } catch {
       // Defaults are already tuned for local play.
     }
@@ -33,6 +33,7 @@ export function createSettingsUi({ elements, state }) {
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
       if (typeof saved.name === "string") nameInput.value = saved.name;
+      if (["1v1", "2v2"].includes(saved.matchMode)) state.quickMode = saved.matchMode;
       if (["easy", "medium", "hard", "insane"].includes(saved.aiDifficulty)) config.aiDifficulty = saved.aiDifficulty;
       if (typeof saved.bottomHalfControl === "boolean") settings.bottomHalfControl = saved.bottomHalfControl;
       if (typeof saved.sound === "boolean") settings.sound = saved.sound;
@@ -45,6 +46,7 @@ export function createSettingsUi({ elements, state }) {
   function saveSettings() {
     const payload = {
       name: nameInput.value.trim(),
+      matchMode: state.quickMode,
       aiDifficulty: config.aiDifficulty,
       bottomHalfControl: settings.bottomHalfControl,
       sound: settings.sound

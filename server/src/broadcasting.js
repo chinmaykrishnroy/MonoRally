@@ -1,5 +1,5 @@
 import { NETWORK_HZ, REJOIN_GRACE_MS } from "./config.js";
-import { jsonState, statePacket } from "./serialization.js";
+import { jsonState, legacyStatePacket, scoredStatePacket, statePacket } from "./serialization.js";
 import { broadcast, broadcastBinary } from "./ws.js";
 
 export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMechanics }) {
@@ -8,9 +8,13 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
     room.nextPublishAt = now + (room.status === "running" ? 1000 / NETWORK_HZ : 500);
     const recipients = [...room.players.map((p) => clients.get(p.clientId)).filter(Boolean), ...room.spectators];
     if (!recipients.length) return;
-    const binaryRecipients = recipients.filter((client) => client.protocol >= 2);
+    const scoredBinaryRecipients = recipients.filter((client) => client.protocol >= 4);
+    const binaryRecipients = recipients.filter((client) => client.protocol === 3);
+    const legacyBinaryRecipients = recipients.filter((client) => client.protocol === 2);
     const jsonRecipients = recipients.filter((client) => client.protocol < 2);
+    if (scoredBinaryRecipients.length) broadcastBinary(scoredBinaryRecipients, scoredStatePacket(room, now, stateMechanics));
     if (binaryRecipients.length) broadcastBinary(binaryRecipients, statePacket(room, now, stateMechanics));
+    if (legacyBinaryRecipients.length) broadcastBinary(legacyBinaryRecipients, legacyStatePacket(room, now, stateMechanics));
     if (jsonRecipients.length) broadcast(jsonRecipients, jsonState(room, now, stateMechanics));
   }
 
@@ -25,21 +29,23 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
         id: p.clientId || p.id,
         name: p.name,
         team: p.team,
-        slot: p.slot
+        slot: p.slot,
+        score: p.returns || 0
       }))
     });
   }
 
   function publicRooms() {
     return [...rooms.values()]
-      .filter((room) => !room.quick)
+      .filter((room) => room.visibility === "public" && (!room.quick || room.status === "running"))
       .map((room) => ({
         code: room.code,
         mode: room.mode,
         status: room.status,
         players: room.players.length,
         maxPlayers: room.maxPlayers,
-        spectators: room.spectators.length
+        spectators: room.spectators.length,
+        joinable: room.status === "waiting" && room.players.length < room.maxPlayers
       }));
   }
 

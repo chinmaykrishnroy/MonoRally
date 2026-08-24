@@ -1,11 +1,15 @@
 import { H, W, clamp, config } from "../core/shared.js";
+import { createTrajectoryPredictor } from "./trajectory.js";
+import { createCourtViewport } from "./viewport.js";
+
 export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
   let thunderTimer = 0;
   const ballTrails = [];
-  const viewport = { dpr: 1, height: H, scale: 1, width: W, x: 0, y: 0 };
-  let canvasPixelWidth = 0;
-  let canvasPixelHeight = 0;
-  let layoutSignature = "";
+  const impactEvents = new Map();
+  const mobileVisualQuery = window.matchMedia("(max-width: 820px), (pointer: coarse)");
+  let lastImpactToken = "";
+  const { clientToCourt, cssPxToCourt, prepareCanvas, viewport } = createCourtViewport(ctx, usesMobileVisuals);
+  const trajectory = createTrajectoryPredictor(state);
 
   function draw(s) {
     if (!ctx) {
@@ -22,20 +26,25 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     if (!s) {
       dom.replayBtn.hidden = true;
       dom.fillAiBtn.hidden = true;
+      dom.matchResult?.classList.add("hidden");
+      ballTrails.length = 0;
       ctx.restore();
       return;
     }
 
     const view = viewState(s);
-    updateBallTrails(view.balls || []);
+    if (view.status === "running") updateBallTrails(view.balls || []);
+    else ballTrails.length = 0;
+    registerImpact(view.lastHit, view.players || []);
     dom.replayBtn.hidden = !(view.status === "ended" && (state.local || (state.online && state.role === "player")));
     dom.fillAiBtn.hidden = !(state.online && state.role === "player" && view.mode === "2v2" && view.status === "waiting");
     maybeThunder(view.elapsed);
     dom.timerEl.textContent = String(Math.floor(view.elapsed)).padStart(3, "0");
-    dom.missesEl.textContent = `${view.misses.top}:${view.misses.bottom} / ${view.missLimit}`;
-    if (view.status === "ended") dom.statusEl.textContent = winText(s);
-    else if (view.status === "waiting" && view.mode === "2v2") dom.statusEl.textContent = "choose a top or bottom team slot";
-    else if (view.lastPower) dom.statusEl.textContent = `${view.lastPower.player || view.lastPower.team} took ${view.lastPower.type}`;
+    dom.missesEl.textContent = scoreText(view);
+    updateMatchResult(s, view);
+    if (view.status === "ended") dom.statusEl.textContent = state.role === "spectator" ? "Match over." : "Replay or leave the match.";
+    else if (view.status === "waiting" && view.mode === "2v2") dom.statusEl.textContent = "Choose a top-team or bottom-team slot.";
+    else if (view.lastPower) dom.statusEl.textContent = `${view.lastPower.player || view.lastPower.team} collected ${powerName(view.lastPower.type)}.`;
     else if (view.status === "running" && shouldReplaceStaleStatus(dom.statusEl.textContent)) dom.statusEl.textContent = runningStatusText(view);
 
     const fg = inverted ? "#000" : "#fff";
@@ -83,22 +92,37 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
 
     const players = [...view.players].sort((a, b) => Number(a.slot === state.slot) - Number(b.slot === state.slot));
     for (const p of players) {
-      const y = p.team === "top" ? 28 : H - 28;
+      const impact = paddleImpact(p);
+      const edgeDirection = p.team === "top" ? -1 : 1;
+      const y = (p.team === "top" ? 28 : H - 28) + edgeDirection * impact.recoil;
       const paddleH = visualPaddleHeight();
       const shade = view.mode === "2v2" && p.slot % 2 === 1 ? mid : fg;
       const jiggle = p.laser ? Math.sin(performance.now() / 55 + p.slot) * 4 : 0;
-      const hitPulse = impactPulse(view.lastHit, p, y);
-      const squash = hitPulse ? 6 : 0;
+      const squash = impact.squash;
+      const paddleX = p.x - p.w / 2 - jiggle / 2 - squash;
+      const paddleY = y - paddleH / 2 - jiggle / 2 + squash / 3;
+      const paddleW = p.w + jiggle + squash * 2;
+      const renderedH = paddleH + jiggle - squash / 1.5;
+      const depth = Math.max(3, cssPxToCourt(3));
       roundRect(
         ctx,
-        p.x - p.w / 2 - jiggle / 2 - squash,
-        y - paddleH / 2 - jiggle / 2 + squash / 3,
-        p.w + jiggle + squash * 2,
-        paddleH + jiggle - squash / 1.5,
-        Math.min(paddleH / 2, 9 + jiggle / 2),
+        paddleX,
+        paddleY + (p.team === "top" ? depth : -depth),
+        paddleW,
+        renderedH,
+        Math.min(renderedH / 2, 9 + jiggle / 2),
+        inverted ? "#aaa" : "#383838"
+      );
+      roundRect(
+        ctx,
+        paddleX,
+        paddleY,
+        paddleW,
+        renderedH,
+        Math.min(renderedH / 2, 9 + jiggle / 2),
         shade
       );
-      if (hitPulse) {
+      if (impact.active) {
         ctx.globalAlpha = 0.42;
         ctx.strokeStyle = shade;
         ctx.strokeRect(p.x - p.w / 2 - 18, y - paddleH / 2 - 13, p.w + 36, paddleH + 26);
@@ -109,6 +133,14 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
         ctx.strokeStyle = shade;
         ctx.strokeRect(p.x - p.w / 2 - 8, y - paddleH / 2 - 8, p.w + 16, paddleH + 16);
         ctx.globalAlpha = 1;
+      }
+      if (p.slot === state.slot && networkWarningActive() && Math.sin(performance.now() / 115) > -0.15) {
+        ctx.save();
+        ctx.strokeStyle = "#ff3b30";
+        ctx.lineWidth = Math.max(2, cssPxToCourt(2));
+        ctx.globalAlpha = 0.88;
+        ctx.strokeRect(paddleX - 5, paddleY - 5, paddleW + 10, renderedH + 10);
+        ctx.restore();
       }
       drawPaddleName(p, p.x, y, p.w, inverted);
       if (p.emp) {
@@ -121,13 +153,9 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
       }
     }
 
-    drawBallTrails(fg, inverted);
     for (const b of view.balls) {
       const r = visualBallRadius(b.r);
-      ctx.fillStyle = fg;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, r * (b.bump ? 1.35 : 1), 0, Math.PI * 2);
-      ctx.fill();
+      drawBall(b, r, fg, inverted);
       if (b.bump) {
         ctx.globalAlpha = 0.35;
         ctx.strokeStyle = fg;
@@ -147,95 +175,21 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
       ctx.fillText(String(view.countdown), W / 2, H / 2);
     }
 
+    const effectNow = performance.now();
     for (let i = state.effects.length - 1; i >= 0; i -= 1) {
       const effect = state.effects[i];
-      effect.life -= 1;
-      ctx.globalAlpha = Math.max(0, effect.life / effect.max);
+      const progress = clamp((effectNow - effect.createdAt) / effect.duration, 0, 1);
+      ctx.globalAlpha = 1 - progress;
       ctx.strokeStyle = fg;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(effect.x, effect.y, effect.r + (effect.max - effect.life) * 3, 0, Math.PI * 2);
+      ctx.arc(effect.x, effect.y, effect.r + progress * 54, 0, Math.PI * 2);
       ctx.stroke();
-      drawSpark(effect);
+      drawSpark(effect, progress);
       ctx.globalAlpha = 1;
-      if (effect.life <= 0) state.effects.splice(i, 1);
+      if (progress >= 1) state.effects.splice(i, 1);
     }
 
-    ctx.restore();
-  }
-
-  function prepareCanvas(inverted) {
-    const canvas = ctx.canvas;
-    const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const pixelWidth = Math.max(1, Math.round(rect.width * dpr));
-    const pixelHeight = Math.max(1, Math.round(rect.height * dpr));
-
-    if (pixelWidth !== canvasPixelWidth || pixelHeight !== canvasPixelHeight) {
-      canvasPixelWidth = pixelWidth;
-      canvasPixelHeight = pixelHeight;
-      canvas.width = pixelWidth;
-      canvas.height = pixelHeight;
-      ctx.imageSmoothingEnabled = false;
-    }
-
-    computeViewport(pixelWidth, pixelHeight, dpr);
-    syncCourtLayout(pixelWidth, pixelHeight, dpr);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, pixelWidth, pixelHeight);
-    ctx.fillStyle = inverted ? "#fff" : "#000";
-    ctx.fillRect(0, 0, pixelWidth, pixelHeight);
-    drawOuterField(pixelWidth, pixelHeight, inverted);
-
-    if (window.__MONORALLY_DEBUG__) {
-      window.__MONORALLY_VIEWPORT__ = {
-        dpr,
-        height: viewport.height / dpr,
-        scale: viewport.scale / dpr,
-        width: viewport.width / dpr,
-        x: viewport.x / dpr,
-        y: viewport.y / dpr
-      };
-    }
-  }
-
-  function computeViewport(pixelWidth, pixelHeight, dpr) {
-    const courtRatio = W / H;
-    const screenRatio = pixelWidth / pixelHeight;
-    const portrait = screenRatio < 0.85;
-    let width;
-    let height;
-
-    if (portrait) {
-      width = pixelWidth;
-      height = width / courtRatio;
-    } else if (screenRatio > courtRatio) {
-      height = pixelHeight;
-      width = height * courtRatio;
-    } else {
-      width = pixelWidth;
-      height = width / courtRatio;
-    }
-
-    viewport.dpr = dpr;
-    viewport.width = width;
-    viewport.height = height;
-    viewport.scale = width / W;
-    viewport.x = (pixelWidth - width) / 2;
-    viewport.y = (pixelHeight - height) / 2;
-  }
-
-  function drawOuterField(pixelWidth, pixelHeight, inverted) {
-    const gutter = inverted ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.12)";
-    ctx.save();
-    ctx.strokeStyle = gutter;
-    ctx.lineWidth = Math.max(1, viewport.dpr);
-    ctx.strokeRect(viewport.x + ctx.lineWidth / 2, viewport.y + ctx.lineWidth / 2, viewport.width - ctx.lineWidth, viewport.height - ctx.lineWidth);
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    ctx.moveTo(viewport.x, viewport.y + viewport.height / 2);
-    ctx.lineTo(viewport.x + viewport.width, viewport.y + viewport.height / 2);
-    ctx.stroke();
     ctx.restore();
   }
 
@@ -263,58 +217,29 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     ctx.restore();
   }
 
-  function syncCourtLayout(pixelWidth, pixelHeight, dpr) {
-    const css = {
-      bottom: (viewport.y + viewport.height) / dpr,
-      height: viewport.height / dpr,
-      left: viewport.x / dpr,
-      right: (viewport.x + viewport.width) / dpr,
-      top: viewport.y / dpr,
-      width: viewport.width / dpr
-    };
-    const heightFit = Math.abs(viewport.height - pixelHeight) <= dpr;
-    const widthFit = Math.abs(viewport.width - pixelWidth) <= dpr;
-    const sideRail = heightFit && css.left >= 104;
-    const signature = [
-      Math.round(css.left),
-      Math.round(css.top),
-      Math.round(css.width),
-      Math.round(css.height),
-      heightFit ? "h" : "",
-      widthFit ? "w" : "",
-      sideRail ? "s" : ""
-    ].join(":");
-    if (signature === layoutSignature) return;
-    layoutSignature = signature;
-    const style = document.documentElement.style;
-    style.setProperty("--court-left", `${css.left}px`);
-    style.setProperty("--court-right", `${css.right}px`);
-    style.setProperty("--court-top", `${css.top}px`);
-    style.setProperty("--court-bottom", `${css.bottom}px`);
-    style.setProperty("--court-width", `${css.width}px`);
-    style.setProperty("--court-height", `${css.height}px`);
-    document.body.classList.toggle("court-height-fit", heightFit);
-    document.body.classList.toggle("court-width-fit", widthFit);
-    document.body.classList.toggle("court-side-rail", sideRail);
-  }
-
   function updateBallTrails(balls) {
-    ballTrails.length = balls.length;
+    const activeIds = new Set(balls.map((ball, index) => ball.id ?? index));
+    for (let i = ballTrails.length - 1; i >= 0; i -= 1) {
+      if (!activeIds.has(ballTrails[i].id)) ballTrails.splice(i, 1);
+    }
     balls.forEach((ball, index) => {
-      const trail = ballTrails[index] || [];
+      const id = ball.id ?? index;
+      const entry = ballTrails.find((trail) => trail.id === id) || { id, points: [] };
+      const trail = entry.points;
       trail.push({ x: ball.x, y: ball.y, r: ball.r });
-      if (trail.length > 9) trail.splice(0, trail.length - 9);
-      ballTrails[index] = trail;
+      const limit = usesMobileVisuals() ? 6 : 9;
+      if (trail.length > limit) trail.splice(0, trail.length - limit);
+      if (!ballTrails.includes(entry)) ballTrails.push(entry);
     });
   }
 
   function drawBallTrails(fg, inverted) {
     ctx.save();
     ctx.fillStyle = fg;
-    for (const trail of ballTrails) {
-      if (!trail) continue;
+    for (const entry of ballTrails) {
+      const trail = entry.points;
       trail.forEach((point, index) => {
-        const alpha = (index + 1) / trail.length;
+        const alpha = (index + 1) / Math.max(1, trail.length);
         const r = visualBallRadius(point.r);
         ctx.globalAlpha = (inverted ? 0.1 : 0.16) * alpha;
         ctx.beginPath();
@@ -325,13 +250,12 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     ctx.restore();
   }
 
-  function drawSpark(effect) {
-    const alpha = Math.max(0, effect.life / effect.max);
-    const radius = effect.r + (effect.max - effect.life) * 2.2;
+  function drawSpark(effect, progress) {
+    const radius = effect.r + progress * 40;
     const spin = effect.spin || 0;
     ctx.save();
     ctx.translate(effect.x, effect.y);
-    ctx.rotate(spin + (1 - alpha) * 0.9);
+    ctx.rotate(spin + progress * 0.9);
     for (let i = 0; i < 4; i += 1) {
       ctx.rotate(Math.PI / 2);
       ctx.beginPath();
@@ -340,6 +264,56 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  function drawBall(ball, radius, fg, inverted) {
+    const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
+    const angle = Math.atan2(ball.vy || 1, ball.vx || 0);
+    const speedStretch = clamp((speed - 380) / 5000, 0, 0.1);
+    const stretch = ball.bump ? 0.24 : speedStretch;
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    ctx.rotate(angle);
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius * (1 + stretch), radius * (1 - stretch * 0.55), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function registerImpact(lastHit, players) {
+    if (!lastHit) return;
+    const token = `${lastHit.at}:${lastHit.slot ?? ""}:${Math.round(lastHit.x || 0)}`;
+    if (token === lastImpactToken) return;
+    lastImpactToken = token;
+    let slot = Number.isInteger(lastHit.slot) ? lastHit.slot : null;
+    if (slot == null) {
+      const nearest = players.reduce((best, player) => {
+        const distance = Math.abs(player.x - lastHit.x);
+        return !best || distance < best.distance ? { distance, slot: player.slot } : best;
+      }, null);
+      slot = nearest?.slot;
+    }
+    if (slot == null) return;
+    impactEvents.set(slot, {
+      at: performance.now(),
+      intensity: clamp(Number(lastHit.intensity) || 0.7, 0.35, 1)
+    });
+  }
+
+  function paddleImpact(player) {
+    const event = impactEvents.get(player.slot);
+    if (!event) return { active: false, recoil: 0, squash: 0 };
+    const age = performance.now() - event.at;
+    if (age >= 420) {
+      impactEvents.delete(player.slot);
+      return { active: false, recoil: 0, squash: 0 };
+    }
+    const intensity = event.intensity;
+    const envelope = Math.exp(-age / 150) * intensity;
+    const recoil = Math.max(0, Math.sin(Math.min(1, age / 76) * Math.PI)) * 15 * envelope + Math.sin(age / 32) * 2.4 * envelope;
+    const squash = Math.max(0, Math.sin(Math.min(1, age / 95) * Math.PI)) * 6 * envelope;
+    return { active: true, recoil, squash };
   }
 
   function drawPowerIcon(type, color) {
@@ -416,26 +390,24 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     ctx.restore();
   }
 
-  function impactPulse(lastHit, player, y) {
-    if (!lastHit) return false;
-    return Math.abs(lastHit.y - y) < 34 && Math.abs(lastHit.x - player.x) < player.w / 2 + 34;
-  }
-
   function shouldReplaceStaleStatus(text) {
-    return /waiting for players|choose a top|filling empty seats|rejoined match/i.test(String(text || ""));
+    return /waiting for players|choose a top|preparing ai|rejoined the match/i.test(String(text || ""));
   }
 
   function runningStatusText(view) {
-    if (state.role === "spectator") return "spectating";
-    return `${view.mode} rally / ${view.missLimit} misses loses`;
+    if (state.role === "spectator") return "Spectating.";
+    return `${view.mode} rally. ${view.missLimit} misses loses.`;
   }
 
-  function cssPxToCourt(px) {
-    return (px * viewport.dpr) / Math.max(viewport.scale, 1);
+  function networkWarningActive() {
+    if (!state.online || state.role !== "player") return false;
+    const packetAge = performance.now() - (state.lastSnapshotReceivedAt || performance.now());
+    const staleAfter = Math.max(420, (Number(state.latencyMs) || 0) * 3 + 100);
+    return state.connectionState !== "online" || state.networkDegraded || packetAge > staleAfter;
   }
 
   function usesMobileVisuals() {
-    return window.matchMedia("(max-width: 820px), (pointer: coarse)").matches;
+    return mobileVisualQuery.matches;
   }
 
   function visualBallRadius(radius) {
@@ -450,92 +422,6 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     return usesMobileVisuals() ? Math.max(radius, cssPxToCourt(12)) : radius;
   }
 
-  function interpolatedNetState() {
-    if (!state.netBuffer.length) return state.lastNetState;
-    const target = performance.now() - state.renderDelay;
-    let older = state.netBuffer[0];
-    let newer = state.netBuffer[state.netBuffer.length - 1];
-
-    for (let i = 0; i < state.netBuffer.length - 1; i += 1) {
-      if (state.netBuffer[i].receivedAt <= target && state.netBuffer[i + 1].receivedAt >= target) {
-        older = state.netBuffer[i];
-        newer = state.netBuffer[i + 1];
-        break;
-      }
-    }
-
-    if (target <= state.netBuffer[0].receivedAt) return predictOwnPaddle(state.netBuffer[0].snapshot);
-    if (target >= state.netBuffer[state.netBuffer.length - 1].receivedAt) {
-      const latest = state.netBuffer[state.netBuffer.length - 1];
-      const previous = state.netBuffer[state.netBuffer.length - 2];
-      return predictOwnPaddle(extrapolateSnapshot(previous, latest, target));
-    }
-
-    const span = Math.max(1, newer.receivedAt - older.receivedAt);
-    return predictOwnPaddle(interpolateSnapshot(older.snapshot, newer.snapshot, (target - older.receivedAt) / span));
-  }
-
-  function interpolateSnapshot(a, b, t) {
-    const mix = (av, bv) => av + (bv - av) * t;
-    return {
-      ...b,
-      elapsed: mix(a.elapsed || 0, b.elapsed || 0),
-      misses: { ...b.misses },
-      countdown: b.countdown,
-      players: b.players.map((bp) => {
-        const ap = a.players.find((player) => player.slot === bp.slot);
-        return ap ? { ...bp, x: mix(ap.x, bp.x), w: mix(ap.w, bp.w) } : { ...bp };
-      }),
-      balls: b.balls.map((bb, index) => {
-        const ab = a.balls[index];
-        return ab ? { ...bb, x: mix(ab.x, bb.x), y: mix(ab.y, bb.y), r: mix(ab.r, bb.r) } : { ...bb };
-      }),
-      power:
-        a.power && b.power && a.power.type === b.power.type
-          ? { ...b.power, x: mix(a.power.x, b.power.x), y: mix(a.power.y, b.power.y) }
-          : b.power
-    };
-  }
-
-  function extrapolateSnapshot(previous, latest, target) {
-    if (!previous || !latest) return latest?.snapshot || state.lastNetState;
-    const frameMs = Math.max(1, latest.receivedAt - previous.receivedAt);
-    const aheadMs = clamp(target - latest.receivedAt, 0, 50);
-    const ratio = aheadMs / frameMs;
-    const current = latest.snapshot;
-    const prior = previous.snapshot;
-    return {
-      ...current,
-      elapsed: (current.elapsed || 0) + aheadMs / 1000,
-      players: current.players.map((player) => {
-        const old = prior.players.find((entry) => entry.slot === player.slot);
-        if (!old) return { ...player };
-        return { ...player, x: clamp(player.x + (player.x - old.x) * ratio, player.w / 2 + 4, W - player.w / 2 - 4) };
-      }),
-      balls: current.balls.map((ball, index) => {
-        const old = prior.balls[index];
-        if (!old || ball.bump) return { ...ball };
-        return {
-          ...ball,
-          x: clamp(ball.x + (ball.x - old.x) * ratio, -ball.r, W + ball.r),
-          y: clamp(ball.y + (ball.y - old.y) * ratio, -ball.r, H + ball.r)
-        };
-      })
-    };
-  }
-
-  function predictOwnPaddle(snapshot) {
-    if (!snapshot || state.role !== "player") return snapshot;
-    return {
-      ...snapshot,
-      players: snapshot.players.map((player) => {
-        if (player.slot !== state.slot) return player;
-        const targetX = clamp(state.inputX * W, player.w / 2 + 4, W - player.w / 2 - 4);
-        return { ...player, x: player.x + (targetX - player.x) * 0.9 };
-      })
-    };
-  }
-
   function viewState(snapshot) {
     if (!snapshot || !shouldFlipView()) return snapshot;
     return {
@@ -546,20 +432,52 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
       },
       winner: flipTeam(snapshot.winner),
       players: snapshot.players.map((player) => ({ ...player, team: flipTeam(player.team) })),
-      balls: snapshot.balls.map((ball) => ({ ...ball, y: H - ball.y })),
+      balls: snapshot.balls.map((ball) => ({ ...ball, y: H - ball.y, vy: -(ball.vy || 0) })),
       power: snapshot.power ? { ...snapshot.power, y: H - snapshot.power.y } : null,
       lastHit: snapshot.lastHit ? { ...snapshot.lastHit, y: H - snapshot.lastHit.y } : null,
       lastPower: snapshot.lastPower ? { ...snapshot.lastPower, team: flipTeam(snapshot.lastPower.team) } : snapshot.lastPower
     };
   }
 
+  function scoreText(view) {
+    if (state.role === "spectator") return `Top ${view.misses.top} · Bottom ${view.misses.bottom} / ${view.missLimit}`;
+    if (view.mode === "2v2") return `Your team ${view.misses.bottom} · Opponents ${view.misses.top} / ${view.missLimit}`;
+    return `You ${view.misses.bottom} · Them ${view.misses.top} / ${view.missLimit}`;
+  }
+
+  function resultScoreText(view) {
+    if (state.role === "spectator") return `Top ${view.misses.top} · Bottom ${view.misses.bottom}`;
+    if (view.mode === "2v2") return `Your team ${view.misses.bottom} · Opponents ${view.misses.top}`;
+    return `You ${view.misses.bottom} · Them ${view.misses.top}`;
+  }
+
+  function updateMatchResult(snapshot, view) {
+    if (!dom.matchResult) return;
+    const ended = view.status === "ended";
+    dom.matchResult.classList.toggle("hidden", !ended);
+    if (!ended) return;
+    dom.resultTitle.textContent = winText(snapshot);
+    dom.resultScore.textContent = resultScoreText(view);
+  }
+
+  function powerName(type) {
+    if (type === "multi") return "Multi-ball";
+    if (type === "laser") return "Laser Paddle";
+    return "EMP";
+  }
+
   function winText(snapshot) {
-    if (!snapshot.winner) return "nobody wins / leave to menu";
-    if (state.role === "spectator") return `${viewState(snapshot).winner} wins / leave to menu`;
+    if (!snapshot.winner) return "Draw";
+    if (state.role === "spectator") return `${capitalize(viewState(snapshot).winner)} team won`;
     const ownTeam = state.local ? "bottom" : state.team;
     const won = snapshot.winner === ownTeam;
-    if (snapshot.mode === "2v2") return `your team ${won ? "won" : "lost"} / leave to menu`;
-    return `you ${won ? "won" : "lost"} / leave to menu`;
+    if (snapshot.mode === "2v2") return `Your team ${won ? "won" : "lost"}`;
+    return `You ${won ? "won" : "lost"}`;
+  }
+
+  function capitalize(value) {
+    const text = String(value || "");
+    return text ? text[0].toUpperCase() + text.slice(1) : text;
   }
 
   function shouldFlipView() {
@@ -568,17 +486,6 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
 
   function toViewY(y) {
     return shouldFlipView() ? H - y : y;
-  }
-
-  function clientToCourt(clientX, clientY) {
-    const rect = ctx.canvas.getBoundingClientRect();
-    const dpr = viewport.dpr || window.devicePixelRatio || 1;
-    const x = (clientX - rect.left) * dpr;
-    const y = (clientY - rect.top) * dpr;
-    return {
-      x: clamp((x - viewport.x) / viewport.scale, 0, W),
-      y: clamp((y - viewport.y) / viewport.scale, 0, H)
-    };
   }
 
   function flipTeam(team) {
@@ -623,7 +530,9 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
   }
 
   function drawPaddleName(player, x, y, width, inverted) {
-    const name = String(player.name || nameForSlot(player.slot) || "").slice(0, 16);
+    const handle = String(player.name || nameForSlot(player.slot) || "").slice(0, 16);
+    const visibleHandle = usesMobileVisuals() && handle.length > 8 ? `${handle.slice(0, 7)}..` : handle;
+    const name = `${visibleHandle} [${Math.max(0, Number(player.score) || 0)}]`;
     if (!name) return;
     const minFont = usesMobileVisuals() ? cssPxToCourt(9) : 10;
     const maxFont = usesMobileVisuals() ? cssPxToCourt(12) : 16;
@@ -655,7 +564,7 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     document.body.classList.remove("invert", "shake");
   }
 
-  return { clearThunder, clientToCourt, draw, interpolatedNetState, toViewY };
+  return { clearThunder, clientToCourt, draw, interpolatedNetState: trajectory.interpolatedNetState, toViewY };
 }
 
 export function stagingSlots() {

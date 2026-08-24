@@ -13,126 +13,180 @@
   <body>
     <main class="shell">
       <section class="menu" id="menu">
-        <div class="brand">
+        <div class="playHome" id="playHome">
           <p class="eyebrow">MONO/RALLY</p>
           <h1>MonoRally</h1>
-          <p class="tag">one-bit paddle physics, quick rooms, clean speed</p>
-          <div class="quickGuide" aria-label="quick start">
-            <p><b>01 move</b><span>drag anywhere across the lower half</span></p>
-            <p><b>02 return</b><span>meet the ball with your paddle</span></p>
-            <p><b>03 survive</b><span>first to 5 misses loses in 1v1</span></p>
-          </div>
+          <p class="tag">Minimal paddle physics. Precise online rallies.</p>
+          <button id="playBtn" class="playBtn" type="button">Play</button>
+          <p class="controlHint">Move with a lower-screen drag, A/D, or the arrow keys.</p>
+          <section class="leaderboardPanel" aria-labelledby="leaderboardTitle">
+            <header><span id="leaderboardTitle">Top rally scores</span><small>returns · time</small></header>
+            <div class="leaderboardBoards">
+              <section><h2>1v1</h2><div id="leaderboard1v1" class="leaderboard" aria-live="polite"><p class="leaderboardEmpty">Loading...</p></div></section>
+              <section><h2>2v2</h2><div id="leaderboard2v2" class="leaderboard" aria-live="polite"><p class="leaderboardEmpty">Loading...</p></div></section>
+            </div>
+          </section>
           <div class="menuTools" aria-label="game tools">
-            <button id="settingsBtn" class="iconBtn" aria-label="settings" data-tooltip="Adjust AI, touch controls, and sound">
+            <button id="settingsBtn" class="iconBtn" aria-label="Settings" data-tooltip="Adjust AI, touch controls, and sound">
               <svg class="gearSvg" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"></path>
                 <path d="M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A8.2 8.2 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 2.6 1.5L10 21.5h4l.4-2.6a8.2 8.2 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5Z"></path>
               </svg>
             </button>
-            <button id="infoBtn" class="iconBtn" aria-label="how to play" data-tooltip="Read rules, power-ups, rooms, and replay">i</button>
+            <button id="infoBtn" class="iconBtn" aria-label="How to play" data-tooltip="Read the rules, controls, power-ups, and room guide">i</button>
           </div>
         </div>
 
-        <div class="panel">
-          <label>
-            <span>handle</span>
-            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="swift-orbit">
-          </label>
-          <div class="buttonGrid">
-            <button id="aiBtn" aria-label="AI mode" data-tooltip="Play instantly against local AI">AI mode</button>
-            <button id="quickBtn" aria-label="quick match" data-tooltip="Find online players; AI fills empty seats after 5 seconds">quick match</button>
-          </div>
-          <div class="modeTabs" aria-label="quick match size">
-            <button id="quick1" class="active" type="button" aria-label="1v1" data-tooltip="One paddle per side, first to 5 misses loses">1v1</button>
-            <button id="quick2" type="button" aria-label="2v2" data-tooltip="Two paddles and two balls per team, first to 8 misses loses">2v2</button>
-          </div>
-          <p class="small" id="quickStatus">quick match waits 5s, then fills empty seats with medium AI</p>
-        </div>
+        <section class="playFlow hidden" id="playFlow" aria-live="polite">
+          <header class="flowHeader">
+            <button id="flowBackBtn" class="iconBtn" type="button" aria-label="Back">&larr;</button>
+            <div><span>Play</span><strong id="flowTitle">Choose your match</strong></div>
+          </header>
 
-        <div class="panel">
-          <div class="row">
-            <button id="create1" aria-label="new room / 2" data-tooltip="Create a private 1v1 room">new room / 2</button>
-            <button id="create4" aria-label="new room / 4" data-tooltip="Create a private 2v2 room with team slots">new room / 4</button>
+          <div class="flowStep" id="modeStep">
+            <label>
+              <span>Player name</span>
+              <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="swift-orbit">
+            </label>
+            <fieldset>
+              <legend>Match size</legend>
+              <div class="modeTabs" aria-label="Match size">
+                <button id="quick1" class="active" type="button" aria-label="1 versus 1" data-tooltip="One paddle per side; five misses loses">1v1</button>
+                <button id="quick2" type="button" aria-label="2 versus 2" data-tooltip="Two paddles and balls per side; eight misses loses">2v2</button>
+              </div>
+            </fieldset>
+            <div class="choiceList">
+              <button id="aiBtn" type="button"><span>Practice with AI</span><small>Start immediately on this device</small></button>
+              <button id="onlineBtn" type="button"><span>Play online</span><small>Match, host, join, or spectate</small></button>
+            </div>
           </div>
-          <label>
-            <span>room code</span>
-            <input id="roomCode" maxlength="6" placeholder="ABC123">
-          </label>
-          <button id="copyRoomBtn" type="button" aria-label="copy room link" data-tooltip="Copy a joinable link for this room code">copy room link</button>
-          <div class="row">
-            <button id="joinPlayer" aria-label="join player" data-tooltip="Take an open player slot">join player</button>
-            <button id="joinSpectator" aria-label="spectate" data-tooltip="Watch without controlling a paddle">spectate</button>
-          </div>
-          <div class="rooms" id="rooms"></div>
-        </div>
 
-        <button class="install" id="installBtn" hidden>install app</button>
+          <div class="flowStep hidden" id="onlineStep">
+            <div class="choiceList">
+              <button id="quickBtn" type="button"><span>Quick match</span><small>Find players; AI fills empty seats after five seconds</small></button>
+              <button id="browseRoomsBtn" type="button"><span>Public rooms</span><small>Join a waiting room or watch a live match</small></button>
+              <button id="privateRoomBtn" type="button"><span>Private room</span><small>Create or join with a six-character code</small></button>
+            </div>
+          </div>
+
+          <div class="flowStep hidden" id="roomsStep">
+            <div class="roomTabs" role="tablist" aria-label="Public room status">
+              <button id="roomWaitingTab" class="active" role="tab" aria-selected="true" type="button">Waiting</button>
+              <button id="roomLiveTab" role="tab" aria-selected="false" type="button">In progress</button>
+            </div>
+            <button id="hostPublicBtn" type="button">Host public 1v1</button>
+            <div class="rooms" id="rooms"></div>
+            <div class="divider"><span>or use a room code</span></div>
+            <label>
+              <span>Room code</span>
+              <input id="publicRoomCode" maxlength="6" autocomplete="off" inputmode="text" placeholder="ABC123">
+            </label>
+            <div class="row">
+              <button id="publicJoinPlayer" type="button">Join match</button>
+              <button id="publicJoinSpectator" type="button">Spectate</button>
+            </div>
+          </div>
+
+          <div class="flowStep hidden" id="privateStep">
+            <button id="createPrivateBtn" type="button">Create private 1v1</button>
+            <div class="divider"><span>or join by code</span></div>
+            <label>
+              <span>Room code</span>
+              <input id="roomCode" maxlength="6" autocomplete="off" inputmode="text" placeholder="ABC123">
+            </label>
+            <div class="row">
+              <button id="joinPlayer" type="button">Join match</button>
+              <button id="joinSpectator" type="button">Spectate</button>
+            </div>
+            <button id="copyRoomBtn" type="button" aria-label="Copy room link">Copy room link</button>
+          </div>
+
+          <p class="flowStatus" id="quickStatus">Ready.</p>
+        </section>
+
+        <button class="install" id="installBtn" hidden>Install app</button>
       </section>
 
       <section class="game hidden" id="game">
         <div class="hud">
-          <span id="modeLabel">AI</span>
-          <span id="timer">000</span>
-          <span id="misses">0:0</span>
-          <span id="networkBadge" class="networkBadge" data-tooltip="Measured round-trip connection latency" hidden>-- ms</span>
-          <button id="copyRoomGameBtn" aria-label="copy room link" data-tooltip="Copy this room's invite link" hidden>copy room link</button>
-          <button id="fillAiBtn" aria-label="fill AI" data-tooltip="Start now by filling every empty 2v2 slot with AI" hidden>fill AI</button>
-          <button id="replayBtn" aria-label="replay" data-tooltip="Play again in the same room" hidden>replay</button>
-          <button id="leaveBtn" aria-label="leave" data-tooltip="Return to the main menu">leave</button>
+          <div class="hudIdentity">
+            <span id="modeLabel">Practice</span>
+            <span id="roomBadge" class="roomBadge" hidden><small>Room</small><strong id="roomValue">------</strong></span>
+          </div>
+          <div class="hudScore" aria-label="Match status">
+            <span class="hudMetric"><small>Time</small><strong id="timer">000</strong></span>
+            <span class="hudMetric scoreMetric"><small>Misses</small><strong id="misses">You 0 · Them 0 / 5</strong></span>
+            <span id="networkBadge" class="networkBadge" data-tooltip="Measured round-trip latency" hidden>-- ms</span>
+          </div>
+          <div class="hudActions">
+            <button id="copyRoomGameBtn" aria-label="Copy room link" data-tooltip="Copy this room's invite link" hidden>Copy</button>
+            <button id="fillAiBtn" aria-label="Fill with AI" data-tooltip="Fill every empty 2v2 slot with AI" hidden>Fill AI</button>
+            <button id="replayBtn" aria-label="Replay" data-tooltip="Play again in the same room" hidden>Replay</button>
+            <button id="leaveBtn" aria-label="Leave" data-tooltip="Return to the main menu">Leave</button>
+          </div>
         </div>
         <canvas id="court" width="1000" height="680" aria-label="MonoRally game court"></canvas>
-        <div class="controlCoach hidden" id="controlCoach" role="status">
-          <div><strong>move your bottom paddle</strong><span>drag anywhere across the lower half</span></div>
-          <div class="keyHint"><kbd>A</kbd><kbd>D</kbd><span>or</span><kbd>&larr;</kbd><kbd>&rarr;</kbd></div>
-          <button id="dismissCoach" type="button">got it</button>
+        <div class="matchResult hidden" id="matchResult" role="status">
+          <span>Match over</span>
+          <strong id="resultTitle">You won</strong>
+          <span id="resultScore">You 0 · Them 0</span>
         </div>
-        <div class="status" id="status">move with pointer, arrows, or A/D</div>
+        <div class="controlCoach hidden" id="controlCoach" role="status">
+          <div><strong>Move your bottom paddle</strong><span>Drag anywhere across the lower half</span></div>
+          <div class="keyHint"><kbd>A</kbd><kbd>D</kbd><span>or</span><kbd>&larr;</kbd><kbd>&rarr;</kbd></div>
+          <button id="dismissCoach" type="button">Got it</button>
+        </div>
+        <div class="status" id="status">Drag to move, or use A/D or the arrow keys.</div>
       </section>
 
       <div class="overlay hidden" id="overlay">
         <section class="modal hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
           <div class="modalHeader">
-            <h2 id="settingsTitle">settings</h2>
-            <button class="closeBtn" data-close-modal>close</button>
+            <h2 id="settingsTitle">Settings</h2>
+            <button class="closeBtn" data-close-modal>Close</button>
           </div>
           <label>
-            <span>handle</span>
+            <span>Player name</span>
             <input id="settingsName" maxlength="18" autocomplete="nickname">
           </label>
           <label>
-            <span>ai difficulty</span>
+            <span>AI difficulty</span>
             <select id="aiDifficulty">
-              <option value="easy">easy</option>
-              <option value="medium">medium</option>
-              <option value="hard">hard</option>
-              <option value="insane">insane</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+              <option value="insane">Insane</option>
             </select>
           </label>
           <input id="renderDelayInput" type="hidden">
           <label class="checkRow">
             <input id="bottomControlInput" type="checkbox">
-            <span>bottom-half drag controls paddle</span>
+            <span>Lower-screen drag controls the paddle</span>
           </label>
           <label class="checkRow">
             <input id="soundInput" type="checkbox">
-            <span>sound effects</span>
+            <span>Sound effects</span>
           </label>
         </section>
 
         <section class="modal hidden" id="infoModal" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
           <div class="modalHeader">
-            <h2 id="infoTitle">how to play</h2>
-            <button class="closeBtn" data-close-modal>close</button>
+            <h2 id="infoTitle">How to play</h2>
+            <button class="closeBtn" data-close-modal>Close</button>
           </div>
           <div class="docs">
             <p>Move your paddle with pointer drag, A/D, arrow keys, or by dragging across the lower half of the screen.</p>
             <p>In 1v1, the first side to miss 5 balls loses. In 2v2, the first team to miss 8 balls loses.</p>
             <p>At match start and after a full ball reset, the game counts down 3, 2, 1. The countdown gets faster as the match gets faster.</p>
             <p>Serves aim toward the receiving paddle, so a player misses mainly by moving away or reacting late.</p>
+            <p>Your paddle's horizontal speed changes the ball's exit angle. Meet the ball while moving to steer the return, much like a racket.</p>
             <p>Power-ups spawn near center. The last player to touch the ball gets the power-up when that ball hits it.</p>
             <p>Multi-ball sets total active balls to 2 in 1v1 and 4 in 2v2. Countdown waits until every active ball is gone.</p>
+            <p>A 2v2 rally keeps a two-ball baseline. If one ball is missed while another remains, a replacement serve enters without interrupting the surviving ball.</p>
             <p>Laser paddle doubles paddle width, then fades back smoothly. EMP slows nearby balls, then fades smoothly.</p>
-            <p>Quick match supports 1v1 and 2v2. If the queue is short, missing players are filled by medium-strength verb-noun AI players.</p>
+            <p>Quick match supports 1v1 and 2v2. Active quick matches are public and spectatable. If the queue is short, missing players are filled by medium-strength verb-noun AI players.</p>
+            <p>Rally score starts after both sides touch a ball. Every later return scores for the player who made it, so receiving the serve gives no free point.</p>
+            <p>If your connection becomes unstable, only your paddle outline and latency badge pulse red. The warning is not shown to opponents.</p>
             <p>In 2v2 rooms, players first choose one of four paddle slots on the real court edges. The lower two slots are bottom team; the upper two slots are top team. The match starts when all four slots are filled.</p>
             <p>In 2v2 rooms, players can fill remaining empty seats with AI. Room-fill AI players are named ai-1, ai-2, and so on.</p>
             <p>Replay appears after a match ends and restarts the same room without recreating it.</p>

@@ -11,8 +11,11 @@ LABEL org.opencontainers.image.title="MonoRally" \
 
 ENV NODE_ENV=production
 ENV PORT=8787
+ENV LEADERBOARD_FILE=/data/leaderboard.json
 
 WORKDIR /app
+
+RUN mkdir -p /data && chown node:node /data
 
 COPY --chown=node:node package.json ./
 COPY --chown=node:node server ./server

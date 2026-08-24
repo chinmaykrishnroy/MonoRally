@@ -55,6 +55,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/monorally
           tags: |
+            type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
@@ -74,10 +75,14 @@ jobs:
           body: |
             ## Highlights
 
-            - Reduced online render delay and moved local paddle rendering to prediction with bounded extrapolation.
-            - Added server-side late-input collision validation to prevent false misses on ordinary networks.
-            - Added input sequencing, congestion-aware input sending, and live latency feedback.
-            - Added quick-start guidance, mode tooltips, and a first-match control coach.
+            - Added coded NTP-style probe pairs that reject clock samples distorted by network queueing.
+            - Added compact trajectory packets, synchronized input reconstruction, prediction, and server-side late-input collision adjudication.
+            - Added moving-paddle spin, curved trajectories, recoil, squash, and smoother monochrome depth effects.
+            - Added the guided play flow, resilient public room discovery, responsive mobile/tablet court, local network warning, and reliable match-end results.
+            - Added public spectatable quick matches, mobile reconnect coverage, remembered handles and match size, and room-code entry from the public browser.
+            - Added established-rally player scoring and swept rounded-paddle collision for steep edge returns.
+            - Improved 2v2 AI ball assignment and restored the two-ball baseline after individual misses.
+            - Added separate server-verified top-ten 1v1 and 2v2 leaderboards with persistent container storage.
 
             ## Container image
 
@@ -85,4 +90,4 @@ jobs:
             ghcr.io/chinmaykrishnroy/monorally:${{ github.ref_name }}
             ```
 
-            Multi-architecture image: `linux/amd64`, `linux/arm64`.
+            Also tagged with the release version without `v`, the major/minor version, and `latest`. Multi-architecture image: `linux/amd64`, `linux/arm64`.

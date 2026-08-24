@@ -3,14 +3,16 @@ const wsUrl = baseUrl.replace(/^http/, "ws");
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function makeClient(name, protocol = 2, sessionId = "") {
+function makeClient(name, protocol = 3, sessionId = "") {
   const ws = new WebSocket(wsUrl);
+  ws.binaryType = "arraybuffer";
   const client = {
     ws,
     name,
     protocol,
     events: [],
     binary: 0,
+    binaryTypes: [],
     jsonStates: 0,
     code: null,
     joined: false,
@@ -29,6 +31,7 @@ function makeClient(name, protocol = 2, sessionId = "") {
       return;
     }
     client.binary += 1;
+    if (event.data instanceof ArrayBuffer) client.binaryTypes.push(new Uint8Array(event.data)[0]);
   };
 
   return new Promise((resolve, reject) => {
@@ -64,17 +67,17 @@ async function assertConfig() {
 async function testNewProtocol1v1() {
   const clients = [];
   try {
-    const a = await makeClient("smoke-a", 2);
+    const a = await makeClient("smoke-a", 3);
     clients.push(a);
     a.ws.send(JSON.stringify({ t: "createRoom", mode: "1v1" }));
     await wait(250);
     if (!a.code || !a.joined) throw new Error("1v1 creator did not join");
 
-    const b = await makeClient("smoke-b", 2);
+    const b = await makeClient("smoke-b", 3);
     clients.push(b);
     b.ws.send(JSON.stringify({ t: "joinRoom", code: a.code, role: "player" }));
     await wait(700);
-    if (!b.joined || a.binary < 3 || b.binary < 3) {
+    if (!b.joined || a.binary < 3 || b.binary < 3 || !a.binaryTypes.includes(2) || !b.binaryTypes.includes(2)) {
       throw new Error(`1v1 binary state failed: a=${a.binary} b=${b.binary} bJoined=${b.joined}`);
     }
     a.ws.send(JSON.stringify({ t: "replayRoom" }));
@@ -107,7 +110,7 @@ async function testLegacyJsonCompatibility() {
 async function testQuick2v2AiFill(fallbackMs) {
   const clients = [];
   try {
-    const solo = await makeClient("quick-2v2-solo", 2, "quick-2v2-solo-session");
+    const solo = await makeClient("quick-2v2-solo", 3, "quick-2v2-solo-session");
     clients.push(solo);
     solo.ws.send(JSON.stringify({ t: "quick", mode: "2v2" }));
     await wait(fallbackMs + 1400);
@@ -122,7 +125,7 @@ async function testQuick2v2AiFill(fallbackMs) {
 async function testRoom2v2AiFill() {
   const clients = [];
   try {
-    const host = await makeClient("room-fill-host", 2, "room-fill-host-session");
+    const host = await makeClient("room-fill-host", 3, "room-fill-host-session");
     clients.push(host);
     host.ws.send(JSON.stringify({ t: "createRoom", mode: "2v2" }));
     await wait(300);
@@ -140,14 +143,14 @@ async function test2v2AndSpectators(maxSpectators) {
   const clients = [];
   try {
     const sessions = ["session-host", "session-player-1", "session-player-2", "session-player-3"];
-    const host = await makeClient("host", 2, sessions[0]);
+    const host = await makeClient("host", 3, sessions[0]);
     clients.push(host);
     host.ws.send(JSON.stringify({ t: "createRoom", mode: "2v2" }));
     await wait(250);
     if (!host.code) throw new Error("2v2 host did not create room");
 
     for (let i = 0; i < 3; i += 1) {
-      const player = await makeClient(`player-${i}`, 2, sessions[i + 1]);
+      const player = await makeClient(`player-${i}`, 3, sessions[i + 1]);
       clients.push(player);
       player.ws.send(JSON.stringify({ t: "joinRoom", code: host.code, role: "player" }));
     }
@@ -166,7 +169,7 @@ async function test2v2AndSpectators(maxSpectators) {
 
     clients[1].ws.close();
     await wait(300);
-    const resumed = await makeClient("player-0-return", 2, sessions[1]);
+    const resumed = await makeClient("player-0-return", 3, sessions[1]);
     clients.push(resumed);
     resumed.ws.send(JSON.stringify({ t: "resumeRoom", code: host.code }));
     await wait(700);
@@ -176,12 +179,12 @@ async function test2v2AndSpectators(maxSpectators) {
 
     const spectators = [];
     for (let i = 0; i < maxSpectators; i += 1) {
-      const spectator = await makeClient(`spectator-${i}`, 2);
+      const spectator = await makeClient(`spectator-${i}`, 3);
       clients.push(spectator);
       spectators.push(spectator);
       spectator.ws.send(JSON.stringify({ t: "joinRoom", code: host.code, role: "spectator" }));
     }
-    const overflow = await makeClient("spectator-overflow", 2);
+    const overflow = await makeClient("spectator-overflow", 3);
     clients.push(overflow);
     overflow.ws.send(JSON.stringify({ t: "joinRoom", code: host.code, role: "spectator" }));
     await wait(700);
@@ -195,12 +198,17 @@ async function test2v2AndSpectators(maxSpectators) {
 
 async function main() {
   const config = await assertConfig();
+  const leaderboardResponse = await fetch(`${baseUrl}/leaderboard.json`);
+  const leaderboard = await leaderboardResponse.json();
+  if (!leaderboardResponse.ok || !Array.isArray(leaderboard.boards?.["1v1"]) || !Array.isArray(leaderboard.boards?.["2v2"])) {
+    throw new Error("leaderboard endpoint failed");
+  }
   await testNewProtocol1v1();
   await testLegacyJsonCompatibility();
   await testQuick2v2AiFill(Number(config.quickMatchFallbackMs) || 5000);
   await testRoom2v2AiFill();
   await test2v2AndSpectators(Number(config.maxSpectators) || 10);
-  console.log("smoke_ok config + 1v1 + legacy + quick-ai + room-ai-fill + 2v2 + spectators");
+  console.log("smoke_ok config + leaderboard + 1v1 + legacy + quick-ai + room-ai-fill + 2v2 + spectators");
 }
 
 main().catch((error) => {

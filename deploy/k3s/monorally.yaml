@@ -5,7 +5,9 @@ metadata:
   labels:
     app.kubernetes.io/name: monorally
 spec:
-  replicas: 2
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: monorally
@@ -16,7 +18,7 @@ spec:
     spec:
       containers:
         - name: monorally
-          image: ghcr.io/chinmaykrishnroy/monorally:1.1.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.2.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -26,6 +28,11 @@ spec:
               value: "8787"
             - name: CORS_ORIGINS
               value: "https://monorally.prefect-sys.online"
+            - name: LEADERBOARD_FILE
+              value: "/data/leaderboard.json"
+          volumeMounts:
+            - name: monorally-data
+              mountPath: /data
           readinessProbe:
             httpGet:
               path: /config.json
@@ -36,6 +43,21 @@ spec:
               path: /config.json
               port: http
             initialDelaySeconds: 10
+      volumes:
+        - name: monorally-data
+          persistentVolumeClaim:
+            claimName: monorally-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: monorally-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: Service

@@ -6,13 +6,16 @@ The visual style is intentionally quiet: black court, white/gray paddles, small 
 
 ## Demo
 
-Play MonoRally at [mono.prefect-sys.online](https://mono.prefect-sys.online).
+Play MonoRally at [monorally.prefect-sys.online](https://monorally.prefect-sys.online).
 
 ## Features
 
 - Local AI mode with configurable difficulty.
 - Online quick match for 1v1 and 2v2.
-- Quick match fills missing 2v2 seats with medium AI after the fallback window.
+- Quick match fills missing seats with medium AI after the fallback window, then exposes the active match for spectators.
+- Guided Play flow for practice, quick match, public rooms, and private rooms.
+- Public room browser with separate waiting and in-progress views.
+- Separate persistent, scrollable 1v1 and 2v2 top-ten boards ranked by verified winning returns, then misses and match time.
 - Private room mode for 1v1 and 2v2.
 - 2v2 staging lobby where players choose top or bottom team slots.
 - Spectator support with configurable spectator limit.
@@ -22,7 +25,11 @@ Play MonoRally at [mono.prefect-sys.online](https://mono.prefect-sys.online).
 - Binary protocol for smooth online state updates with JSON fallback for legacy clients.
 - Low-latency rendering with bounded extrapolation instead of a long visual delay.
 - Server-side late-input validation to prevent legitimate paddle blocks becoming false misses.
-- Contextual mode tooltips, a three-step quick start, and a first-match control coach.
+- NTP-style client/server clock synchronization and timestamped input adjudication.
+- Moving-paddle momentum transfer and compact spin acceleration for curved returns.
+- Swept rounded-paddle collision catches steep edge contacts without tunneling between physics ticks.
+- Local-only red connection warning on the affected paddle and latency badge.
+- Contextual tooltips and a first-match control coach.
 - Power-ups: multi-ball, laser paddle, and EMP.
 - Timed color inversion/rumble event with configurable trigger and duration.
 - PWA manifest, service worker, and install prompt.
@@ -36,9 +43,9 @@ client/
   src/
     core/        Shared constants and browser helpers
     game/        Local AI game simulation
-    network/     Browser socket client and protocol decoder
+    network/     Browser socket client, clock sync, and protocol decoder
     platform/    Browser session/resume helpers
-    rendering/   Canvas renderer, interpolation, staging UI, effects
+    rendering/   Canvas drawing, trajectory prediction, viewport layout, staging UI
     ui/          DOM collection, settings, audio
 
 server/
@@ -52,6 +59,7 @@ server/
     room-lifecycle.js    Room creation and replay reset
     broadcasting.js      State publishing, roster, room list, pruning
     serialization.js     Binary and JSON state snapshots
+    input-timeline.js     Timestamp expansion and bounded paddle history
     utils.js             Shared server helpers
 
 scripts/                 Smoke and load test helpers
@@ -105,8 +113,8 @@ and keep `https://monorally.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.1.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.1.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.2.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.2.0
 ```
 
 For K3s, apply the version-pinned example after the GitHub Release workflow completes:
@@ -117,9 +125,11 @@ kubectl apply -f deploy/k3s/monorally.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
+Leaderboard records are written to `LEADERBOARD_FILE`. Docker Compose mounts `/data` in the `monorally_data` named volume, so rebuilding or replacing the container keeps the records. Mount a PersistentVolumeClaim at `/data` when deploying to K3s.
+
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.1.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.2.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 
@@ -137,6 +147,16 @@ INPUT_SEND_HZ=60
 INPUT_BUFFER_LIMIT_BYTES=2048
 INPUT_HISTORY_MS=500
 LATE_INPUT_GRACE_MS=220
+CLOCK_SYNC_INTERVAL_MS=5000
+LEADERBOARD_FILE=/data/leaderboard.json
+PADDLE_MAX_SPEED=4200
+PADDLE_ACCELERATION=30000
+PADDLE_VELOCITY_TRANSFER=0.34
+
+BALL_SPIN_TRANSFER=0.26
+BALL_SPIN_OFFSET=280
+BALL_SPIN_MAX=1400
+BALL_SPIN_DECAY=1.8
 
 QUICK_MATCH_FALLBACK_MS=5000
 QUICK_AI_DIFFICULTY=medium
@@ -192,8 +212,9 @@ LOAD_DURATION_SECONDS=15
 - Use Docker Compose for a repeatable build.
 - The server exposes `/config.json` so the client receives runtime tuning from the environment.
 - The online protocol uses compact binary state packets for modern clients and JSON snapshots for compatibility.
-- Paddle updates use a five-byte application payload. When a connection is congested, replaceable input is dropped instead of queued behind stale movement.
+- Paddle updates use a nine-byte application payload: type, quantized position, sequence, and synchronized timestamp. When a connection is congested, replaceable input is dropped instead of queued behind stale movement.
 - Browsers cannot use raw UDP directly. MonoRally keeps broad browser and Cloudflare Tunnel compatibility with WebSockets, while fixing latency at the prediction and collision-validation layers.
+- See [docs/networking.md](./docs/networking.md) for the packet layout, clock model, prediction rules, and future WebTransport path.
 
 ## License
 
