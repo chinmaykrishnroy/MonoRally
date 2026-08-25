@@ -12,6 +12,7 @@ LABEL org.opencontainers.image.title="MonoRally" \
 ENV NODE_ENV=production
 ENV PORT=8787
 ENV LEADERBOARD_FILE=/data/leaderboard.json
+ENV APP_VERSION=${VERSION}
 
 WORKDIR /app
 

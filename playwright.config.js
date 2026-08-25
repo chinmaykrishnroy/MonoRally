@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "tests/e2e",
   timeout: 30000,
+  workers: 1,
   use: {
     baseURL: "http://127.0.0.1:19087",
     trace: "retain-on-failure"
@@ -11,7 +12,7 @@ export default defineConfig({
     command: "node server/src/index.js",
     env: {
       PORT: "19087",
-      QUICK_MATCH_FALLBACK_MS: "1000"
+      QUICK_MATCH_FALLBACK_MS: "5000"
     },
     url: "http://127.0.0.1:19087",
     reuseExistingServer: !process.env.CI,

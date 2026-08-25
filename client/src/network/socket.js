@@ -19,6 +19,7 @@ export function createNetwork({ handleServer, helloMessage, nameForSlot, onClose
     state.ws.addEventListener("close", () => {
       state.connecting = false;
       onClose?.();
+      if (state.sessionMoved) return;
       setTimeout(connect, 900);
     });
     state.ws.addEventListener("error", () => {
@@ -36,7 +37,10 @@ export function createNetwork({ handleServer, helloMessage, nameForSlot, onClose
   }
 
   function ensureSocket() {
-    if (!state.ws || state.ws.readyState > 1) connect();
+    if (!state.ws || state.ws.readyState > 1) {
+      state.sessionMoved = false;
+      connect();
+    }
   }
 
   function send(msg) {

@@ -34,6 +34,7 @@ jobs:
             curl --fail --silent http://127.0.0.1:18787/config.json && break
             sleep 1
           done
+          npm run test:clock-sync
           npm run test:smoke
 
   publish:
@@ -75,6 +76,9 @@ jobs:
           body: |
             ## Highlights
 
+            - Stabilized iPhone public-room joining by preserving room rows and pausing discovery refresh while a join is pending.
+            - Added same-browser tab takeover with explicit invalidation of the previous tab and tab-local reconnect ownership.
+            - Added a sanitized global error overlay with prefilled GitHub issue reporting for unexpected failures.
             - Added coded NTP-style probe pairs that reject clock samples distorted by network queueing.
             - Added compact trajectory packets, synchronized input reconstruction, prediction, and server-side late-input collision adjudication.
             - Added moving-paddle spin, curved trajectories, recoil, squash, and smoother monochrome depth effects.
@@ -83,6 +87,8 @@ jobs:
             - Added established-rally player scoring and swept rounded-paddle collision for steep edge returns.
             - Improved 2v2 AI ball assignment and restored the two-ball baseline after individual misses.
             - Added separate server-verified top-ten 1v1 and 2v2 leaderboards with persistent container storage.
+            - Added paginated public-room discovery, spectatable quick-match waiting rooms, and Safari-compatible fragmented WebSocket handling.
+            - Added presence-aware replay controls, refined portrait touch layout, LAN deployment support, and live clock-sync release validation.
 
             ## Container image
 

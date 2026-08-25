@@ -4,6 +4,13 @@ import { beginCountdown } from "./physics.js";
 import { seedInputTimeline } from "./input-timeline.js";
 import { rand, startingXForSlot } from "./utils.js";
 
+export function canReplayRoom(room, clients) {
+  if (!room || room.status !== "ended" || room.players.length !== room.maxPlayers) return false;
+  return room.players.every((player) =>
+    player.bot || (!player.disconnected && player.clientId && clients.has(player.clientId))
+  );
+}
+
 export function createRoomLifecycle(rooms) {
   function makeRoom(mode, quick, visibility = quick ? "matchmaking" : "private") {
     return {

@@ -97,7 +97,8 @@ export function createCourtViewport(ctx, usesMobileVisuals) {
     viewport.height = height;
     viewport.scale = width / W;
     viewport.x = availableX + (availableWidth - width) / 2;
-    viewport.y = availableY + (availableHeight - height) / 2;
+    const topAlignForThumbControl = !sideRail && usesMobileVisuals() && window.innerHeight > window.innerWidth;
+    viewport.y = topAlignForThumbControl ? availableY : availableY + (availableHeight - height) / 2;
   }
 
   function drawOuterField(pixelWidth, pixelHeight, inverted) {

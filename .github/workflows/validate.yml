@@ -57,6 +57,7 @@ jobs:
             curl --fail --silent http://127.0.0.1:18787/config.json && break
             sleep 1
           done
+          npm run test:clock-sync
           npm run test:smoke
 
   docker:

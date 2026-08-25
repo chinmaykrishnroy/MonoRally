@@ -45,4 +45,25 @@ describe("NTP-style clock synchronization", () => {
 
     expect(validateClockProbePair(first, second)).toBeNull();
   });
+
+  test("measures an arbitrary server offset under symmetric delay", () => {
+    const serverOffset = 137;
+    const outboundDelay = 32;
+    const inboundDelay = 32;
+    const t0 = 10_000;
+    const t1 = t0 + outboundDelay + serverOffset;
+    const t2 = t1 + 3;
+    const t3 = t0 + outboundDelay + 3 + inboundDelay;
+
+    const measurement = computeClockMeasurement({ t0, t1, t2 }, t3);
+    expect(measurement.rtt).toBe(outboundDelay + inboundDelay);
+    expect(measurement.offset).toBe(serverOffset);
+  });
+
+  test("exposes the unavoidable half-path bias under asymmetric delay", () => {
+    const measurement = computeClockMeasurement({ t0: 1000, t1: 1020, t2: 1020 }, 1100);
+
+    expect(measurement.rtt).toBe(100);
+    expect(measurement.offset).toBe(-30);
+  });
 });

@@ -7,6 +7,7 @@ import { clearResumeRoom, readResumeRoom, saveResumeRoom, sessionId } from "./pl
 import { createRenderer, stagingSlots } from "./rendering/renderer.js";
 import { createAudio } from "./ui/audio.js";
 import { collectDom } from "./ui/dom.js";
+import { createErrorUi } from "./ui/error-ui.js";
 import { createLeaderboardUi } from "./ui/leaderboard.js";
 import { createPlayFlow } from "./ui/play-flow.js";
 import { createSettingsUi } from "./ui/settings-ui.js";
@@ -54,12 +55,14 @@ const state = {
   thunderDone: false,
   gameOverSoundFor: "",
   audio: null,
-  autoFillAi: false
+  autoFillAi: false,
+  sessionMoved: false
 };
 
 const SESSION_ID = sessionId();
 
 const elements = collectDom();
+const errorUi = createErrorUi({ config, state });
 const leaderboardUi = createLeaderboardUi({ one: elements.leaderboard1v1, two: elements.leaderboard2v2 });
 leaderboardUi.refresh();
 const {
@@ -126,19 +129,21 @@ const network = createNetwork({
   nameForSlot,
   onOpen: maybeResumeRoom,
   onClose: () => {
+    if (state.sessionMoved) return;
     clock.stop();
     state.connectionState = "reconnecting";
     state.networkDegraded = true;
     networkBadge.dataset.quality = "poor";
     networkBadge.textContent = "! offline";
     if (!state.local) statusEl.textContent = "Connection lost. Reconnecting...";
+    playFlow?.finishJoin?.("Connection lost. Reconnecting...");
   },
   onConnecting: () => {
     state.connectionState = "connecting";
   },
-  onProtocolError: () => {
-    statusEl.textContent = "The connection protocol changed. Refreshing...";
-    location.reload();
+  onProtocolError: (error) => {
+    statusEl.textContent = "The connection protocol failed.";
+    errorUi.show(error || "The connection protocol could not be decoded");
   },
   parseBinaryStatePacket,
   state
@@ -184,15 +189,15 @@ const playFlow = createPlayFlow({
   }
 });
 
-async function requestPublicRooms() {
-  send({ t: "rooms" });
+async function requestPublicRooms({ append = false, offset = 0, status = "waiting" } = {}) {
   try {
-    const response = await fetch("/rooms.json", { cache: "no-store" });
-    if (!response.ok) return;
+    const query = new URLSearchParams({ offset: String(offset), status });
+    const response = await fetch(`/rooms.json?${query}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Room directory returned ${response.status}`);
     const payload = await response.json();
-    playFlow.updateRooms(payload.rooms || []);
+    playFlow.updateRooms(payload.rooms || [], { append, hasMore: payload.hasMore, nextOffset: payload.nextOffset, status });
   } catch {
-    // WebSocket discovery remains active when the HTTP snapshot is unavailable.
+    playFlow.roomsLoadFailed();
   }
 }
 
@@ -354,7 +359,14 @@ function handleServer(msg) {
     state.team = msg.team;
   }
   if (msg.t === "resumed") statusEl.textContent = "Rejoined the match.";
+  if (msg.t === "sessionMoved") {
+    state.sessionMoved = true;
+    leaveGame();
+    playFlow.setStatus(msg.message || "This match moved to another tab");
+    return;
+  }
   if (msg.t === "joined") {
+    playFlow.finishJoin();
     state.online = true;
     state.local = false;
     state.role = msg.role;
@@ -387,7 +399,6 @@ function handleServer(msg) {
       statusEl.textContent = "Preparing AI players...";
     }
   }
-  if (msg.t === "rooms") playFlow.updateRooms(msg.rooms || []);
   if (msg.t === "state") {
     const matchJustStarted = state.lastNetState?.status !== "running" && msg.status === "running";
     const missTotal = Number(msg.misses?.top || 0) + Number(msg.misses?.bottom || 0);
@@ -442,8 +453,10 @@ function handleServer(msg) {
     statusEl.textContent = state.role === "spectator" ? "Spectating." : "Drag to move, or use A/D or the arrow keys.";
   }
   if (msg.t === "error") {
+    playFlow.finishJoin(msg.message);
     playFlow.setStatus(msg.message);
     statusEl.textContent = msg.message;
+    if (msg.fatal) errorUi.show(msg.message, { errorId: msg.errorId });
   }
 }
 

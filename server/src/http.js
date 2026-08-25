@@ -21,7 +21,7 @@ const MIME = {
 
 const NO_STORE_EXTENSIONS = new Set([".html", ".js", ".css", ".webmanifest"]);
 
-export function createHttpServer({ leaderboard, publicRooms } = {}) {
+export function createHttpServer({ leaderboard, publicRoomPage } = {}) {
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -40,7 +40,8 @@ export function createHttpServer({ leaderboard, publicRooms } = {}) {
       return;
     }
 
-    const requested = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname);
+    const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+    const requested = decodeURIComponent(requestUrl.pathname);
     if (requested === "/config.json") {
       res.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
@@ -69,7 +70,14 @@ export function createHttpServer({ leaderboard, publicRooms } = {}) {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store"
       });
-      res.end(JSON.stringify({ rooms: publicRooms?.() || [] }));
+      res.end(
+        JSON.stringify(
+          publicRoomPage?.({
+            offset: Number(requestUrl.searchParams.get("offset")) || 0,
+            status: requestUrl.searchParams.get("status")
+          }) || { rooms: [], total: 0, hasMore: false, nextOffset: 0 }
+        )
+      );
       return;
     }
 

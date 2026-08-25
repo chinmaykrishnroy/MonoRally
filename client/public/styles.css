@@ -415,10 +415,14 @@ h1 {
 }
 
 .rooms {
-  max-height: min(360px, 42dvh);
+  height: 148px;
   display: grid;
+  align-content: start;
   gap: 8px;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--muted) var(--bg);
+  scrollbar-width: thin;
 }
 
 .roomItem {
@@ -809,6 +813,41 @@ kbd {
   margin: 0;
 }
 
+.errorDetails {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: 11px/1.45 "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.errorActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.buttonLink {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  text-align: center;
+  text-decoration: none;
+}
+
+.buttonLink:hover,
+.buttonLink:focus-visible {
+  background: var(--fg);
+  color: var(--bg);
+  outline: none;
+}
+
 body.game-active.court-side-rail .hud {
   top: max(8px, env(safe-area-inset-top));
   right: auto;
@@ -910,13 +949,23 @@ body.game-active.court-side-rail .status {
   }
 
   body:not(.court-side-rail) .hudIdentity {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
   }
 
   body:not(.court-side-rail) .hudScore {
-    display: grid;
-    grid-template-columns: 62px minmax(0, 1fr) 62px;
+    display: flex;
+  }
+
+  body:not(.court-side-rail) .hudScore .hudMetric:first-child {
+    flex: 0 0 62px;
+  }
+
+  body:not(.court-side-rail) .hudScore .scoreMetric {
+    flex: 1 1 auto;
+  }
+
+  body:not(.court-side-rail) .hudScore .networkBadge {
+    flex: 0 0 62px;
   }
 
   .scoreMetric {
@@ -959,8 +1008,12 @@ body.game-active.court-side-rail .status {
     gap: 1px;
   }
 
-  body:not(.court-side-rail) .hudScore {
-    grid-template-columns: 52px minmax(0, 1fr) 54px;
+  body:not(.court-side-rail) .hudScore .hudMetric:first-child {
+    flex-basis: 52px;
+  }
+
+  body:not(.court-side-rail) .hudScore .networkBadge {
+    flex-basis: 54px;
   }
 
   .networkBadge,

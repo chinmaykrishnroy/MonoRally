@@ -70,13 +70,6 @@
           </div>
 
           <div class="flowStep hidden" id="roomsStep">
-            <div class="roomTabs" role="tablist" aria-label="Public room status">
-              <button id="roomWaitingTab" class="active" role="tab" aria-selected="true" type="button">Waiting</button>
-              <button id="roomLiveTab" role="tab" aria-selected="false" type="button">In progress</button>
-            </div>
-            <button id="hostPublicBtn" type="button">Host public 1v1</button>
-            <div class="rooms" id="rooms"></div>
-            <div class="divider"><span>or use a room code</span></div>
             <label>
               <span>Room code</span>
               <input id="publicRoomCode" maxlength="6" autocomplete="off" inputmode="text" placeholder="ABC123">
@@ -85,6 +78,13 @@
               <button id="publicJoinPlayer" type="button">Join match</button>
               <button id="publicJoinSpectator" type="button">Spectate</button>
             </div>
+            <div class="divider"><span>or browse public rooms</span></div>
+            <div class="roomTabs" role="tablist" aria-label="Public room status">
+              <button id="roomWaitingTab" class="active" role="tab" aria-selected="true" type="button">Waiting</button>
+              <button id="roomLiveTab" role="tab" aria-selected="false" type="button">In progress</button>
+            </div>
+            <button id="hostPublicBtn" type="button">Host public 1v1</button>
+            <div class="rooms" id="rooms" aria-live="polite" aria-label="Public room list"></div>
           </div>
 
           <div class="flowStep hidden" id="privateStep">
@@ -190,6 +190,21 @@
             <p>In 2v2 rooms, players first choose one of four paddle slots on the real court edges. The lower two slots are bottom team; the upper two slots are top team. The match starts when all four slots are filled.</p>
             <p>In 2v2 rooms, players can fill remaining empty seats with AI. Room-fill AI players are named ai-1, ai-2, and so on.</p>
             <p>Replay appears after a match ends and restarts the same room without recreating it.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="overlay hidden" id="errorOverlay">
+        <section class="modal" role="alertdialog" aria-modal="true" aria-labelledby="errorTitle">
+          <div class="modalHeader">
+            <h2 id="errorTitle">Something went wrong</h2>
+            <button class="closeBtn" id="dismissError" type="button">Close</button>
+          </div>
+          <p id="errorMessage">MonoRally encountered an unexpected error.</p>
+          <pre class="errorDetails" id="errorDetails"></pre>
+          <div class="errorActions">
+            <button id="copyError" type="button">Copy details</button>
+            <a class="buttonLink" id="reportError" target="_blank" rel="noopener noreferrer">Open GitHub issue</a>
           </div>
         </section>
       </div>

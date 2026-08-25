@@ -1,4 +1,4 @@
-const CACHE = "monorally-v24";
+const CACHE = "monorally-v0";
 const ASSETS = [
   "/",
   "/index.html",
@@ -15,6 +15,7 @@ const ASSETS = [
   "/src/rendering/viewport.js",
   "/src/ui/audio.js",
   "/src/ui/dom.js",
+  "/src/ui/error-ui.js",
   "/src/ui/leaderboard.js",
   "/src/ui/play-flow.js",
   "/src/ui/settings-ui.js",

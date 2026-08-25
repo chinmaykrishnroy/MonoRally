@@ -2,6 +2,8 @@ services:
   monorally:
     build:
       context: .
+      args:
+        VERSION: "${APP_VERSION:-dev}"
     image: monorally:local
     container_name: monorally
     env_file:

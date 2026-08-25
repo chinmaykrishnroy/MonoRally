@@ -7,12 +7,13 @@ export const NETWORK_HZ = envNumber("NETWORK_HZ", 30, 10, 60);
 export const PORT = envNumber("PORT", 8787, 1024, 65535);
 export const LEADERBOARD_FILE = process.env.LEADERBOARD_FILE || "./data/leaderboard.json";
 export const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS ||
-  `http://localhost:${PORT},http://127.0.0.1:${PORT},https://monorally.prefect-sys.online`)
+  `http://localhost:${PORT},http://127.0.0.1:${PORT},https://mono.prefect-sys.online`)
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 export const QUICK_MATCH_FALLBACK_MS = envNumber("QUICK_MATCH_FALLBACK_MS", 5000, 1000, 30000);
 export const MAX_SPECTATORS = envNumber("MAX_SPECTATORS", 10, 0, 100);
+export const PUBLIC_ROOM_PAGE_SIZE = envNumber("PUBLIC_ROOM_PAGE_SIZE", 10, 2, 50);
 export const MAX_BALLS = envNumber("MAX_BALLS", 10, 1, 24);
 export const WEBSOCKET_MAX_MESSAGE_BYTES = envNumber("WEBSOCKET_MAX_MESSAGE_BYTES", 16 * 1024, 1024, 256 * 1024);
 export const HEARTBEAT_MS = envNumber("HEARTBEAT_MS", 15000, 5000, 60000);
@@ -52,11 +53,13 @@ export const INPUT_PACKET = 1;
 
 export function publicConfig() {
   return {
+    appVersion: process.env.APP_VERSION || "1.2.1",
     aiDifficulty: envText("AI_DIFFICULTY", "hard", ["easy", "medium", "hard", "insane"]),
     renderDelayMs: envNumber("RENDER_DELAY_MS", 25, 0, 100),
     quickMatchFallbackMs: QUICK_MATCH_FALLBACK_MS,
     quickAiDifficulty: QUICK_AI_DIFFICULTY,
     maxSpectators: MAX_SPECTATORS,
+    publicRoomPageSize: PUBLIC_ROOM_PAGE_SIZE,
     maxBalls: MAX_BALLS,
     multiballTotal1v1: MULTIBALL_TOTAL_1V1,
     multiballTotal2v2: MULTIBALL_TOTAL_2V2,

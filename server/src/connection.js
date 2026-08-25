@@ -63,7 +63,7 @@ export function attachWebSocketServer(server, { broadcastRooms, clients, onBinar
       handleFrames(client, chunk, {
         onBinary,
         onMessage,
-        onError: (target, message) => send(target, { t: "error", message })
+        onError: (target, message, details = {}) => send(target, { t: "error", message, ...details })
       })
     );
     socket.on("close", () => onDisconnect(client));

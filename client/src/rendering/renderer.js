@@ -36,13 +36,24 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     if (view.status === "running") updateBallTrails(view.balls || []);
     else ballTrails.length = 0;
     registerImpact(view.lastHit, view.players || []);
-    dom.replayBtn.hidden = !(view.status === "ended" && (state.local || (state.online && state.role === "player")));
+    const replayReady = state.local || (
+      state.online &&
+      state.role === "player" &&
+      view.players.length === (view.mode === "2v2" ? 4 : 2)
+    );
+    dom.replayBtn.hidden = !(view.status === "ended" && replayReady);
     dom.fillAiBtn.hidden = !(state.online && state.role === "player" && view.mode === "2v2" && view.status === "waiting");
     maybeThunder(view.elapsed);
     dom.timerEl.textContent = String(Math.floor(view.elapsed)).padStart(3, "0");
     dom.missesEl.textContent = scoreText(view);
     updateMatchResult(s, view);
-    if (view.status === "ended") dom.statusEl.textContent = state.role === "spectator" ? "Match over." : "Replay or leave the match.";
+    if (view.status === "ended") {
+      dom.statusEl.textContent = state.role === "spectator"
+        ? "Match over."
+        : replayReady
+          ? "Replay or leave the match."
+          : "Match over. A player left.";
+    }
     else if (view.status === "waiting" && view.mode === "2v2") dom.statusEl.textContent = "Choose a top-team or bottom-team slot.";
     else if (view.lastPower) dom.statusEl.textContent = `${view.lastPower.player || view.lastPower.team} collected ${powerName(view.lastPower.type)}.`;
     else if (view.status === "running" && shouldReplaceStaleStatus(dom.statusEl.textContent)) dom.statusEl.textContent = runningStatusText(view);

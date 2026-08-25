@@ -36,6 +36,12 @@ export function createPlayFlow({ elements, actions }) {
   let view = "home";
   let roomTab = "waiting";
   let rooms = [];
+  let joining = false;
+  let loadingRooms = false;
+  let hasMoreRooms = false;
+  let nextRoomOffset = 0;
+  let joinTimer = 0;
+  let lastRenderKey = "";
   const titles = {
     mode: "Choose your match",
     online: "How would you like to play?",
@@ -54,10 +60,7 @@ export function createPlayFlow({ elements, actions }) {
       setStatus(`Finding a ${mode} match...`);
       actions.quick(mode);
     });
-    browseRoomsBtn.addEventListener("click", () => {
-      show("rooms");
-      actions.requestRooms();
-    });
+    browseRoomsBtn.addEventListener("click", () => show("rooms"));
     privateRoomBtn.addEventListener("click", () => show("private"));
     hostPublicBtn.addEventListener("click", () => actions.create(mode, "public"));
     createPrivateBtn.addEventListener("click", () => actions.create(mode, "private"));
@@ -68,11 +71,14 @@ export function createPlayFlow({ elements, actions }) {
     copyRoomBtn.addEventListener("click", actions.copyRoomLink);
     roomWaitingTab.addEventListener("click", () => setRoomTab("waiting"));
     roomLiveTab.addEventListener("click", () => setRoomTab("live"));
+    roomsRoot.addEventListener("scroll", () => {
+      if (roomsRoot.scrollTop + roomsRoot.clientHeight >= roomsRoot.scrollHeight - 24) requestRoomPage(false);
+    });
     nameInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") show("online");
     });
     window.setInterval(() => {
-      if (view === "rooms") actions.requestRooms();
+      if (view === "rooms" && !joining && roomsRoot.scrollTop < 8) requestRoomPage(true);
     }, 2500);
   }
 
@@ -87,6 +93,7 @@ export function createPlayFlow({ elements, actions }) {
     flowTitle.textContent = titles[next] || titles.mode;
     flowBackBtn.setAttribute("aria-label", next === "mode" ? "Back to home" : "Back");
     if (next === "mode") window.setTimeout(() => nameInput.focus(), 0);
+    if (next === "rooms") window.setTimeout(() => requestRoomPage(true), 0);
   }
 
   function goBack() {
@@ -108,30 +115,63 @@ export function createPlayFlow({ elements, actions }) {
 
   function setRoomTab(tab) {
     roomTab = tab === "live" ? "live" : "waiting";
+    loadingRooms = false;
+    hasMoreRooms = false;
+    nextRoomOffset = 0;
+    rooms = [];
+    lastRenderKey = "";
     roomWaitingTab.classList.toggle("active", roomTab === "waiting");
     roomLiveTab.classList.toggle("active", roomTab === "live");
     roomWaitingTab.setAttribute("aria-selected", String(roomTab === "waiting"));
     roomLiveTab.setAttribute("aria-selected", String(roomTab === "live"));
     renderRooms();
+    requestRoomPage(true);
   }
 
-  function updateRooms(nextRooms) {
-    rooms = Array.isArray(nextRooms) ? nextRooms : [];
+  function requestRoomPage(reset) {
+    if (joining || loadingRooms || (!reset && !hasMoreRooms)) return;
+    loadingRooms = true;
+    roomsRoot.setAttribute("aria-busy", "true");
+    if (reset) nextRoomOffset = 0;
+    actions.requestRooms({ append: !reset, offset: nextRoomOffset, status: roomTab });
+  }
+
+  function updateRooms(nextRooms, page = {}) {
+    if (joining) return;
+    loadingRooms = false;
+    roomsRoot.setAttribute("aria-busy", "false");
+    if (page.status && page.status !== roomTab) return;
+    const incoming = Array.isArray(nextRooms) ? nextRooms : [];
+    rooms = page.append ? mergeRooms(rooms, incoming) : incoming;
+    hasMoreRooms = Boolean(page.hasMore);
+    nextRoomOffset = Number(page.nextOffset) || rooms.length;
     renderRooms();
+  }
+
+  function roomsLoadFailed() {
+    loadingRooms = false;
+    roomsRoot.setAttribute("aria-busy", "false");
+    if (!rooms.length) setStatus("Could not load public rooms. You can still join with a room code.");
   }
 
   function renderRooms() {
     const visible = rooms.filter((room) => (roomTab === "waiting" ? room.status === "waiting" : room.status !== "waiting"));
+    const renderKey = `${roomTab}:${JSON.stringify(visible)}`;
+    if (renderKey === lastRenderKey) return;
+    lastRenderKey = renderKey;
+    const scrollTop = roomsRoot.scrollTop;
     roomsRoot.replaceChildren();
     if (!visible.length) {
       const empty = document.createElement("p");
       empty.className = "emptyRooms";
       empty.textContent = roomTab === "waiting" ? "No public rooms are waiting." : "No matches are in progress.";
       roomsRoot.appendChild(empty);
+      roomsRoot.scrollTop = 0;
       return;
     }
 
     for (const room of visible) roomsRoot.appendChild(roomNode(room));
+    roomsRoot.scrollTop = scrollTop;
   }
 
   function roomNode(room) {
@@ -163,7 +203,7 @@ export function createPlayFlow({ elements, actions }) {
 
   function joinRoom(code, role) {
     roomCode.value = code;
-    actions.join(code, role);
+    beginJoin(code, role);
   }
 
   function joinCode(role) {
@@ -173,7 +213,7 @@ export function createPlayFlow({ elements, actions }) {
       roomCode.focus();
       return;
     }
-    actions.join(code, role);
+    beginJoin(code, role);
   }
 
   function joinPublicCode(role) {
@@ -184,7 +224,37 @@ export function createPlayFlow({ elements, actions }) {
       return;
     }
     roomCode.value = code;
+    beginJoin(code, role);
+  }
+
+  function beginJoin(code, role) {
+    if (joining) return;
+    joining = true;
+    setJoinBusy(true);
     actions.join(code, role);
+    window.clearTimeout(joinTimer);
+    joinTimer = window.setTimeout(() => {
+      if (!joining) return;
+      joining = false;
+      setJoinBusy(false);
+      setStatus("The room did not respond. Check your connection and try again.");
+    }, 7000);
+  }
+
+  function finishJoin(message = "") {
+    joining = false;
+    loadingRooms = false;
+    window.clearTimeout(joinTimer);
+    setJoinBusy(false);
+    if (message) setStatus(message);
+    else view = "game";
+  }
+
+  function setJoinBusy(busy) {
+    roomsStep.setAttribute("aria-busy", String(busy));
+    for (const button of [joinPlayer, joinSpectator, publicJoinPlayer, publicJoinSpectator, ...roomsRoot.querySelectorAll("button")]) {
+      button.disabled = busy;
+    }
   }
 
   function setStatus(message) {
@@ -198,11 +268,18 @@ export function createPlayFlow({ elements, actions }) {
   }
 
   function reset() {
+    finishJoin();
     setStatus("Ready.");
     show("home");
   }
 
   setMode("1v1", false);
   bind();
-  return { mode: () => mode, openPrivateCode, reset, setMode, setStatus, show, updateRooms };
+  return { finishJoin, mode: () => mode, openPrivateCode, reset, roomsLoadFailed, setMode, setStatus, show, updateRooms };
+}
+
+function mergeRooms(current, incoming) {
+  const merged = new Map(current.map((room) => [room.code, room]));
+  for (const room of incoming) merged.set(room.code, room);
+  return [...merged.values()];
 }

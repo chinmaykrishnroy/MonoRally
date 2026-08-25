@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: monorally
-          image: ghcr.io/chinmaykrishnroy/monorally:1.2.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.2.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -27,7 +27,7 @@ spec:
             - name: PORT
               value: "8787"
             - name: CORS_ORIGINS
-              value: "https://monorally.prefect-sys.online"
+              value: "https://mono.prefect-sys.online"
             - name: LEADERBOARD_FILE
               value: "/data/leaderboard.json"
           volumeMounts:

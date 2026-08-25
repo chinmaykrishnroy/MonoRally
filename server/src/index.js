@@ -34,16 +34,15 @@ import {
   paddleWidth,
   updateBotTargets
 } from "./physics.js";
-import { createRoomLifecycle } from "./room-lifecycle.js";
+import { canReplayRoom, createRoomLifecycle } from "./room-lifecycle.js";
 import { clamp, cleanName, cleanSession, generatedName, rand, requestedTeam, startingXForSlot } from "./utils.js";
 import { broadcast, closeClient, send, sendPing } from "./ws.js";
 
 const rooms = new Map();
 const clients = new Map();
-const quickQueues = { "1v1": [], "2v2": [] };
 const stateMechanics = { countdownValue, empStrength, laserStrength, paddleWidth };
 const { makeRoom, startRoom } = createRoomLifecycle(rooms);
-const { broadcastRooms, broadcastRoster, pruneRooms, publicRooms, publishState } = createBroadcasters({
+const { broadcastRooms, broadcastRoster, pruneRooms, publicRoomPage, publicRooms, publishState } = createBroadcasters({
   checkPresenceWin,
   clients,
   rooms,
@@ -51,7 +50,7 @@ const { broadcastRooms, broadcastRoster, pruneRooms, publicRooms, publishState }
 });
 
 const leaderboard = createLeaderboard(LEADERBOARD_FILE);
-const server = createHttpServer({ leaderboard, publicRooms });
+const server = createHttpServer({ leaderboard, publicRoomPage });
 attachWebSocketServer(server, {
   broadcastRooms,
   clients,
@@ -184,64 +183,51 @@ function allowClientInput(client) {
 function joinQuick(client, mode = "1v1") {
   leaveRoom(client);
   leaveQuick(client);
-  client.role = "quick";
-  client.quickMode = mode;
-  quickQueues[mode] = quickQueues[mode].filter((entry) => entry.alive && !entry.room);
-  quickQueues[mode].push(client);
-  send(client, { t: "quickWait", mode });
-
-  const maxPlayers = mode === "2v2" ? 4 : 2;
-  if (quickQueues[mode].length >= maxPlayers) {
-    startQuickMatch(mode, quickQueues[mode].splice(0, maxPlayers));
-    return;
+  let room = [...rooms.values()].find((candidate) => candidate.quick && candidate.mode === mode && candidate.status === "waiting" && candidate.players.length < candidate.maxPlayers);
+  if (!room) {
+    room = makeRoom(mode, true, "public");
+    room.quickAiDifficulty = QUICK_AI_DIFFICULTY;
+    room.quickDeadline = performance.now() + QUICK_MATCH_FALLBACK_MS;
+    rooms.set(room.code, room);
+    setTimeout(() => startQuickRoom(room), QUICK_MATCH_FALLBACK_MS);
   }
-
-  setTimeout(() => {
-    finalizeQuickQueue(mode);
-  }, QUICK_MATCH_FALLBACK_MS);
+  send(client, { t: "quickWait", mode });
+  addQuickPlayer(room, client);
+  broadcastRoster(room);
+  publishState(room, performance.now(), true);
+  broadcastRooms();
+  if (room.players.length === room.maxPlayers) startQuickRoom(room);
 }
 
 function leaveQuick(client) {
-  for (const mode of Object.keys(quickQueues)) {
-    quickQueues[mode] = quickQueues[mode].filter((entry) => entry.id !== client.id);
-  }
   if (client.role === "quick") client.role = "lobby";
 }
 
-function finalizeQuickQueue(mode) {
-  const maxPlayers = mode === "2v2" ? 4 : 2;
-  quickQueues[mode] = quickQueues[mode].filter((entry) => entry.alive && !entry.room);
-  if (!quickQueues[mode].length) return;
-  startQuickMatch(mode, quickQueues[mode].splice(0, maxPlayers));
+function addQuickPlayer(room, client) {
+  const order = room.mode === "2v2" ? [0, 2, 1, 3] : [0, 1];
+  const slot = order.find((candidate) => !room.players.some((player) => player.slot === candidate));
+  if (!Number.isInteger(slot)) return false;
+  addPlayer(room, client, slotAssignment(slot));
+  return true;
 }
 
-function startQuickMatch(mode, realClients) {
-  if (!realClients.length) return;
-  const room = makeRoom(mode, true, "public");
-  room.quickAiDifficulty = QUICK_AI_DIFFICULTY;
-  rooms.set(room.code, room);
-
-  if (mode === "2v2") {
-    const assignments =
-      realClients.length === 1
-        ? [0]
-        : realClients.length === 2
-          ? [0, 2]
-          : realClients.length === 3
-            ? [0, 1, 2]
-            : [0, 2, 1, 3];
-    realClients.forEach((client, index) => addPlayer(room, client, slotAssignment(assignments[index])));
-  } else {
-    realClients.forEach((client, index) => addPlayer(room, client, { slot: index, team: index === 0 ? "bottom" : "top" }));
+function startQuickRoom(room) {
+  if (!room || room.status !== "waiting" || !rooms.has(room.code)) return;
+  if (!room.players.length) {
+    rooms.delete(room.code);
+    broadcastRooms();
+    return;
   }
-
   for (let slot = 0; slot < room.maxPlayers; slot += 1) {
     if (!room.players.some((player) => player.slot === slot)) addBot(room, slot);
   }
 
   broadcastRoster(room);
   startRoom(room);
-  for (const client of realClients) send(client, { t: "matched", code: room.code, mode });
+  for (const player of room.players) {
+    const realClient = player.clientId ? clients.get(player.clientId) : null;
+    if (realClient) send(realClient, { t: "matched", code: room.code, mode: room.mode });
+  }
   publishState(room, performance.now(), true);
   broadcastRooms();
 }
@@ -289,6 +275,14 @@ function joinRoom(client, code, spectator) {
       send(client, { t: "error", message: "Room is full" });
       return;
     }
+    if (room.quick) {
+      addQuickPlayer(room, client);
+      broadcastRoster(room);
+      publishState(room, performance.now(), true);
+      broadcastRooms();
+      if (room.players.length === room.maxPlayers) startQuickRoom(room);
+      return;
+    }
     addPlayer(room, client);
   }
   if (room.players.length === room.maxPlayers && canStartRoom(room)) startRoom(room);
@@ -306,10 +300,19 @@ function resumeRoom(client, code) {
 
 function tryResumeRoom(client, room) {
   if (!client.sessionId) return false;
-  const player = room.players.find((p) => p.sessionId === client.sessionId && p.disconnected);
+  const player = room.players.find((p) => p.sessionId === client.sessionId);
   if (!player) return false;
 
   leaveRoom(client);
+  if (player.clientId && player.clientId !== client.id) {
+    const previousClient = clients.get(player.clientId);
+    if (previousClient) {
+      send(previousClient, { t: "sessionMoved", message: "This match moved to another tab" });
+      previousClient.room = null;
+      previousClient.role = "lobby";
+      closeClient(previousClient, 4001, "session moved");
+    }
+  }
   player.clientId = client.id;
   player.id = client.id;
   player.name = client.name || player.name;
@@ -337,8 +340,8 @@ function replayRoom(client) {
     send(client, { t: "error", message: "Replay is available after game over" });
     return;
   }
-  if (room.players.length !== room.maxPlayers) {
-    send(client, { t: "error", message: "Waiting for players to replay" });
+  if (!canReplayRoom(room, clients)) {
+    send(client, { t: "error", message: "Replay is unavailable because a player left" });
     return;
   }
   startRoom(room);
@@ -516,7 +519,8 @@ function disconnectFromRoom(client) {
   const room = client.room;
   if (!room) return;
   const player = room.players.find((p) => p.clientId === client.id);
-  if (player && room.status === "running" && client.sessionId) {
+  const canResume = room.status === "running" || (room.quick && room.status === "waiting");
+  if (player && canResume && client.sessionId) {
     player.disconnected = true;
     player.disconnectedAt = performance.now();
     player.clientId = null;

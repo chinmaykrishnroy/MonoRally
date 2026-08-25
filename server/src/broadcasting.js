@@ -1,4 +1,4 @@
-import { NETWORK_HZ, REJOIN_GRACE_MS } from "./config.js";
+import { NETWORK_HZ, PUBLIC_ROOM_PAGE_SIZE, REJOIN_GRACE_MS } from "./config.js";
 import { jsonState, legacyStatePacket, scoredStatePacket, statePacket } from "./serialization.js";
 import { broadcast, broadcastBinary } from "./ws.js";
 
@@ -35,9 +35,9 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
     });
   }
 
-  function publicRooms() {
+  function publicRoomRecords() {
     return [...rooms.values()]
-      .filter((room) => room.visibility === "public" && (!room.quick || room.status === "running"))
+      .filter((room) => room.visibility === "public")
       .map((room) => ({
         code: room.code,
         mode: room.mode,
@@ -47,6 +47,24 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
         spectators: room.spectators.length,
         joinable: room.status === "waiting" && room.players.length < room.maxPlayers
       }));
+  }
+
+  function publicRooms() {
+    return publicRoomRecords().slice(0, PUBLIC_ROOM_PAGE_SIZE);
+  }
+
+  function publicRoomPage({ offset = 0, status = "waiting" } = {}) {
+    const normalizedStatus = status === "live" ? "live" : "waiting";
+    const start = Math.max(0, Number(offset) || 0);
+    const matching = publicRoomRecords().filter((room) => (normalizedStatus === "waiting" ? room.status === "waiting" : room.status !== "waiting"));
+    const page = matching.slice(start, start + PUBLIC_ROOM_PAGE_SIZE);
+    const nextOffset = start + page.length;
+    return {
+      rooms: page,
+      total: matching.length,
+      hasMore: nextOffset < matching.length,
+      nextOffset
+    };
   }
 
   function broadcastRooms() {
@@ -75,5 +93,5 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
     }
   }
 
-  return { broadcastRooms, broadcastRoster, pruneRooms, publicRooms, publishState };
+  return { broadcastRooms, broadcastRoster, pruneRooms, publicRoomPage, publicRooms, publishState };
 }

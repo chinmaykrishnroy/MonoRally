@@ -14,16 +14,16 @@ export function sessionId() {
 }
 
 export function saveResumeRoom(code) {
-  localStorage.setItem(RESUME_KEY, JSON.stringify({ code, at: Date.now() }));
+  sessionStorage.setItem(RESUME_KEY, JSON.stringify({ code, at: Date.now() }));
 }
 
 export function clearResumeRoom() {
-  localStorage.removeItem(RESUME_KEY);
+  sessionStorage.removeItem(RESUME_KEY);
 }
 
 export function readResumeRoom(maxAgeMs = 10 * 60 * 1000) {
   try {
-    const saved = JSON.parse(localStorage.getItem(RESUME_KEY) || "{}");
+    const saved = JSON.parse(sessionStorage.getItem(RESUME_KEY) || "{}");
     if (!saved.code || Date.now() - Number(saved.at || 0) > maxAgeMs) return "";
     return saved.code;
   } catch {
