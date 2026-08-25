@@ -221,6 +221,12 @@ test("joining the same match in a new tab transfers the player session", async (
 
 test("quick 2v2 falls back to a public, spectatable AI-filled match", async ({ browser, page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "single quick-match contract");
+  const spectatorContext = await browser.newContext({ baseURL: "http://127.0.0.1:19087" });
+  const spectator = await spectatorContext.newPage();
+  await openModeStep(spectator);
+  await spectator.getByRole("button", { name: /Play online/ }).click();
+  await spectator.getByRole("button", { name: /Public rooms/ }).click();
+
   await openModeStep(page);
   await page.getByRole("button", { name: "2 versus 2" }).click();
   await page.getByRole("button", { name: /Play online/ }).click();
@@ -229,11 +235,6 @@ test("quick 2v2 falls back to a public, spectatable AI-filled match", async ({ b
   await expect(page.locator("#modeLabel")).toContainText("2v2");
   const code = (await page.locator("#roomValue").textContent())?.trim();
 
-  const spectatorContext = await browser.newContext({ baseURL: "http://127.0.0.1:19087" });
-  const spectator = await spectatorContext.newPage();
-  await openModeStep(spectator);
-  await spectator.getByRole("button", { name: /Play online/ }).click();
-  await spectator.getByRole("button", { name: /Public rooms/ }).click();
   const waitingRoom = spectator.locator(".roomItem", { hasText: code });
   await expect(waitingRoom).toBeVisible();
   await expect(waitingRoom.getByRole("button", { name: "Join" })).toBeVisible();

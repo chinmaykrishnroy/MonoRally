@@ -1,6 +1,6 @@
 {
   "name": "monorally",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Minimal high-speed ball and paddle game with AI, quick match, rooms, spectators, and PWA support.",
   "type": "module",
   "scripts": {
