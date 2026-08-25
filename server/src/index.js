@@ -64,18 +64,33 @@ server.listen(PORT, () => {
   console.log(`Allowed origins: ${ALLOWED_ORIGINS.join(", ")}`);
 });
 
-setInterval(() => {
+const physicsTimer = setInterval(() => {
   for (const room of rooms.values()) tickRoom(room);
 }, TICK);
 
-setInterval(() => {
+const directoryTimer = setInterval(() => {
   broadcastRooms();
   pruneRooms();
 }, 1000);
 
-setInterval(() => {
+const heartbeatTimer = setInterval(() => {
   heartbeatClients();
 }, HEARTBEAT_MS);
+
+let shuttingDown = false;
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
+
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  clearInterval(physicsTimer);
+  clearInterval(directoryTimer);
+  clearInterval(heartbeatTimer);
+  for (const client of clients.values()) client.socket.destroy();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 4000).unref();
+}
 
 function handleMessage(client, msg) {
   if (msg.t === "clockProbe") {
@@ -99,7 +114,7 @@ function handleMessage(client, msg) {
     send(client, { t: "hello", id: client.id, name: client.name, port: PORT, protocol: client.protocol });
   }
   if (msg.t === "quick") joinQuick(client, msg.mode === "2v2" ? "2v2" : "1v1");
-  if (msg.t === "cancelQuick") leaveQuick(client);
+  if (msg.t === "cancelQuick") cancelQuick(client);
   if (msg.t === "createRoom") createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1", msg.visibility === "public" ? "public" : "private");
   if (msg.t === "joinRoom") joinRoom(client, String(msg.code || "").toUpperCase(), msg.role === "spectator");
   if (msg.t === "resumeRoom") resumeRoom(client, String(msg.code || "").toUpperCase());
@@ -192,7 +207,11 @@ function joinQuick(client, mode = "1v1") {
     setTimeout(() => startQuickRoom(room), QUICK_MATCH_FALLBACK_MS);
   }
   send(client, { t: "quickWait", mode });
-  addQuickPlayer(room, client);
+  if (!addQuickPlayer(room, client)) {
+    send(client, { t: "error", message: "Quick match is already full" });
+    if (!room.players.length) rooms.delete(room.code);
+    return;
+  }
   broadcastRoster(room);
   publishState(room, performance.now(), true);
   broadcastRooms();
@@ -203,11 +222,19 @@ function leaveQuick(client) {
   if (client.role === "quick") client.role = "lobby";
 }
 
+function cancelQuick(client) {
+  if (client.room?.quick && client.room.status === "waiting") {
+    leaveRoom(client);
+    return;
+  }
+  leaveQuick(client);
+}
+
 function addQuickPlayer(room, client) {
   const order = room.mode === "2v2" ? [0, 2, 1, 3] : [0, 1];
   const slot = order.find((candidate) => !room.players.some((player) => player.slot === candidate));
   if (!Number.isInteger(slot)) return false;
-  addPlayer(room, client, slotAssignment(slot));
+  addPlayer(room, client, slotAssignment(room.mode, slot));
   return true;
 }
 
@@ -232,8 +259,11 @@ function startQuickRoom(room) {
   broadcastRooms();
 }
 
-function slotAssignment(slot) {
-  return { slot, team: slot < 2 ? "bottom" : "top" };
+function slotAssignment(mode, slot) {
+  return {
+    slot,
+    team: mode === "2v2" ? (slot < 2 ? "bottom" : "top") : (slot === 0 ? "bottom" : "top")
+  };
 }
 
 function createRoom(client, mode, visibility = "private") {
@@ -276,7 +306,10 @@ function joinRoom(client, code, spectator) {
       return;
     }
     if (room.quick) {
-      addQuickPlayer(room, client);
+      if (!addQuickPlayer(room, client)) {
+        send(client, { t: "error", message: "Room is full" });
+        return;
+      }
       broadcastRoster(room);
       publishState(room, performance.now(), true);
       broadcastRooms();

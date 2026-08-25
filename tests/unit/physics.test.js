@@ -58,6 +58,19 @@ describe("server physics", () => {
     expect(room.lastHit).toMatchObject({ x: W / 2, slot: 0 });
   });
 
+  test("resolves an already-known human paddle contact in the crossing tick", () => {
+    const bottom = player("bottom", 0, {
+      inputHistory: [{ x: W / 2, rawX: W / 2, eventAt: 990, receivedAt: 998, sequence: 4, vx: 0 }]
+    });
+    const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall()] });
+
+    advanceBalls(room, 1000, 1 / 60);
+
+    expect(room.balls[0].pendingMiss).toBeNull();
+    expect(room.balls[0].vy).toBeLessThan(0);
+    expect(room.lastHit).toMatchObject({ slot: 0 });
+  });
+
   test("does not let an unprocessed target act as an invisible paddle", () => {
     const bottom = player("bottom", 0, { x: 120, targetX: 900 });
     const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall(900)] });
@@ -97,6 +110,21 @@ describe("server physics", () => {
     expect(room.balls[0].vy).toBeLessThan(0);
   });
 
+  test("accepts a delayed rounded-edge contact at its original event time", () => {
+    const bottom = player("bottom", 0, { x: 180, targetX: 180, inputDelayMs: 90, inputJitterMs: 10 });
+    const ball = { ...makeBall(1), x: 610, y: 620, vx: -3000, vy: 2400, speed: Math.hypot(3000, 2400), curve: 0 };
+    const room = roomFixture({ players: [bottom, player("top", 1)], balls: [ball] });
+
+    advanceBalls(room, 1000, 1 / 60);
+    bottom.inputHistory.push({ x: 500, rawX: 500, eventAt: 980, receivedAt: 1040, sequence: 8, vx: 0 });
+    advanceBalls(room, 1140, 1 / 60);
+
+    expect(room.misses.bottom).toBe(0);
+    expect(room.balls[0].pendingMiss).toBeNull();
+    expect(room.balls[0].vy).toBeLessThan(0);
+    expect(room.balls[0].y).toBeLessThan(H - 28);
+  });
+
   test("rejects a move that happened after the ball crossed", () => {
     const bottom = player("bottom", 0, { x: 180, targetX: 180, inputDelayMs: 90, inputJitterMs: 10 });
     const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall(760)] });
@@ -129,6 +157,22 @@ describe("server physics", () => {
     expect(room.balls[0].vy).toBeLessThan(0);
     expect(room.misses.bottom).toBe(0);
     expect(room.lastHit).toMatchObject({ slot: 0 });
+  });
+
+  test("accepts a known human contact through the rounded paddle edge without pausing", () => {
+    const bottom = player("bottom", 0, {
+      x: 500,
+      prevX: 500,
+      inputHistory: [{ x: 500, rawX: 500, eventAt: 990, receivedAt: 998, sequence: 5, vx: 0 }]
+    });
+    const ball = { ...makeBall(1), x: 610, y: 620, vx: -3000, vy: 2400, speed: Math.hypot(3000, 2400), curve: 0 };
+    const room = roomFixture({ players: [bottom, player("top", 1)], balls: [ball] });
+
+    advanceBalls(room, 1000, 1 / 60);
+
+    expect(room.balls[0].pendingMiss).toBeNull();
+    expect(room.balls[0].vy).toBeLessThan(0);
+    expect(room.misses.bottom).toBe(0);
   });
 
   test("starts scoring only after both sides establish the rally", () => {

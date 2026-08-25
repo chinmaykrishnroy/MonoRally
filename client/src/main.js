@@ -1,6 +1,7 @@
 import { COACH_KEY, H, W, clamp, config, settings } from "./core/shared.js";
 import { LocalGame } from "./game/local-game.js";
 import { createClockSync } from "./network/clock-sync.js";
+import { presentationDelayMs } from "./network/presentation.js";
 import { parseStatePacket as parseBinaryStatePacket } from "./network/protocol.js";
 import { createNetwork } from "./network/socket.js";
 import { clearResumeRoom, readResumeRoom, saveResumeRoom, sessionId } from "./platform/session.js";
@@ -49,6 +50,7 @@ const state = {
   predictedPaddleVx: 0,
   keys: new Set(),
   effects: [],
+  presentationTimers: new Set(),
   lastTime: performance.now(),
   localGame: null,
   deferredInstall: null,
@@ -109,7 +111,14 @@ const dom = {
 };
 const { playGameOver, playMiss, playPower, playRumble, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
 const { closeModal, ensureHandle, loadConfig, loadSettings, openModal, saveSettings } = createSettingsUi({ elements, state });
-const renderer = createRenderer({ ctx, state, dom, playRumble, nameForSlot });
+const renderer = createRenderer({
+  ctx,
+  state,
+  dom,
+  playRumble,
+  nameForSlot,
+  localPerformanceForServerTimestamp: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp)
+});
 const clock = createClockSync({
   intervalMs: () => config.clockSyncIntervalMs,
   onUpdate: ({ offset, rtt, jitter, synced }) => {
@@ -400,19 +409,31 @@ function handleServer(msg) {
     }
   }
   if (msg.t === "state") {
+    const ownPlayer = msg.players?.find((player) => player.slot === state.slot);
+    if (ownPlayer && state.role === "player") state.team = ownPlayer.team || state.team;
     const matchJustStarted = state.lastNetState?.status !== "running" && msg.status === "running";
     const missTotal = Number(msg.misses?.top || 0) + Number(msg.misses?.bottom || 0);
     if (missTotal > state.lastMissTotal) {
-      playMiss();
-      pulseShake("miss-shake");
+      const delayMs = snapshotPresentationDelayMs(msg);
+      playMiss(delayMs / 1000);
+      scheduleImpactVisual(state.room, delayMs, () => pulseShake("miss-shake"));
     }
     state.lastMissTotal = missTotal;
     let hadNewHit = false;
     if (msg.lastHit && msg.lastHit.at !== state.lastHitStamp) {
       state.lastHitStamp = msg.lastHit.at;
-      hitEffect(msg.lastHit.x, renderer.toViewY(msg.lastHit.y));
-      playStrike(0.3);
-      pulseShake("impact-shake");
+      const delayMs = presentationDelayMs({
+        encodedTimestamp: msg.lastHit.at,
+        protocol: msg.protocol,
+        synced: state.clockSynced,
+        toLocalPerformance: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp)
+      });
+      const roomAtHit = state.room;
+      playStrike(0.3, delayMs / 1000);
+      scheduleImpactVisual(roomAtHit, delayMs, () => {
+        hitEffect(msg.lastHit.x, renderer.toViewY(msg.lastHit.y, msg));
+        pulseShake("impact-shake");
+      });
       hadNewHit = true;
     }
     if (msg.lastHit && Number.isInteger(msg.lastHit.slot)) {
@@ -429,7 +450,6 @@ function handleServer(msg) {
     const receivedAt = performance.now();
     state.lastSnapshotReceivedAt = receivedAt;
     const timelineAt = msg.protocol >= 3 ? clock.localPerformanceForServerTimestamp(msg.serverNow) : receivedAt;
-    const ownPlayer = msg.players?.find((player) => player.slot === state.slot);
     if (ownPlayer && state.role === "player") reconcilePredictedPaddle(ownPlayer.x);
     const buffered = { receivedAt, timelineAt, snapshot: msg };
     if (msg.status === "ended") {
@@ -608,6 +628,8 @@ function resetRoundVisuals() {
   state.thunderDone = false;
   state.gameOverSoundFor = "";
   state.effects = [];
+  for (const timer of state.presentationTimers) window.clearTimeout(timer);
+  state.presentationTimers.clear();
   state.keys.clear();
   dom.matchResult.classList.add("hidden");
   renderer.clearThunder();
@@ -748,6 +770,18 @@ function hitEffect(x, y) {
   state.effects.push({ x, y, r: 8, createdAt: performance.now(), duration: 320, spin: Math.random() * Math.PI * 2 });
 }
 
+function scheduleImpactVisual(room, delayMs, callback) {
+  if (delayMs <= 1) {
+    if (state.online && state.room === room) callback();
+    return;
+  }
+  const timer = window.setTimeout(() => {
+    state.presentationTimers.delete(timer);
+    if (state.online && state.room === room) callback();
+  }, delayMs);
+  state.presentationTimers.add(timer);
+}
+
 function nameForSlot(slot) {
   const player = state.roster.find((entry) => entry.slot === slot);
   return player?.name || (slot >= 0 ? `p${slot + 1}` : "player");
@@ -774,7 +808,7 @@ function maybePlayGameOver(snapshot) {
 }
 
 function maybePlayWall(snapshot, hadNewHit) {
-  if (hadNewHit || !snapshot?.balls?.length) return;
+  if (!snapshot?.balls?.length) return;
   const signature = snapshot.balls
     .filter((ball) => ball.bump)
     .map((ball) => `${Math.round(ball.x / 12)}:${Math.round(ball.y / 12)}`)
@@ -783,10 +817,25 @@ function maybePlayWall(snapshot, hadNewHit) {
     state.lastBumpSignature = "";
     return;
   }
+  if (hadNewHit) {
+    state.lastBumpSignature = signature;
+    return;
+  }
   if (signature === state.lastBumpSignature) return;
   state.lastBumpSignature = signature;
-  playWall();
-  pulseShake("impact-shake");
+  const delayMs = snapshotPresentationDelayMs(snapshot);
+  playWall(delayMs / 1000);
+  scheduleImpactVisual(state.room, delayMs, () => pulseShake("impact-shake"));
+}
+
+function snapshotPresentationDelayMs(snapshot) {
+  const presentationTimestamp = (Number(snapshot?.serverNow || 0) + (Number(config.hitPresentationDelayMs) || 90)) >>> 0;
+  return presentationDelayMs({
+    encodedTimestamp: presentationTimestamp,
+    protocol: snapshot?.protocol,
+    synced: state.clockSynced,
+    toLocalPerformance: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp)
+  });
 }
 
 function pulseShake(className) {

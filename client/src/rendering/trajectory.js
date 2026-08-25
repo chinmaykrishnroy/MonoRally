@@ -1,4 +1,5 @@
 import { H, W, clamp, config } from "../core/shared.js";
+import { projectBallWithCollisions } from "./collision-prediction.js";
 
 export function createTrajectoryPredictor(state) {
   const pendingVisuals = new Map();
@@ -8,7 +9,9 @@ export function createTrajectoryPredictor(state) {
     const latestEntry = state.netBuffer[state.netBuffer.length - 1];
     if (latestEntry.snapshot.status !== "running") return predictOwnPaddle(latestEntry.snapshot);
     const trajectoryMode = latestEntry.snapshot.protocol >= 3 && state.clockSynced;
-    const visualDelay = trajectoryMode ? clamp((state.clockJitterMs || 0) * 1.5 + 4, 4, 24) : state.renderDelay;
+    const visualDelay = trajectoryMode
+      ? clamp(Number(config.hitPresentationDelayMs) || 90, 30, 250)
+      : state.renderDelay;
     const target = performance.now() - visualDelay;
     let older = state.netBuffer[0];
     let newer = latestEntry;
@@ -28,25 +31,36 @@ export function createTrajectoryPredictor(state) {
     }
 
     const span = Math.max(1, entryTime(newer) - entryTime(older));
-    return predictOwnPaddle(interpolateSnapshot(older.snapshot, newer.snapshot, (target - entryTime(older)) / span));
+    return predictOwnPaddle(interpolateSnapshot(
+      older.snapshot,
+      newer.snapshot,
+      (target - entryTime(older)) / span,
+      span / 1000
+    ));
   }
 
-  function interpolateSnapshot(a, b, t) {
+  function interpolateSnapshot(a, b, t, spanSeconds) {
     const mix = (av, bv) => av + (bv - av) * t;
+    const projectionSeconds = Math.max(0, spanSeconds * t);
+    const collisionPlayers = collisionPlayersForProjection(a.players, projectionSeconds);
+    const players = b.players.map((bp) => {
+      const ap = a.players.find((player) => player.slot === bp.slot);
+      return ap ? { ...bp, x: mix(ap.x, bp.x), w: mix(ap.w, bp.w), vx: mix(ap.vx || 0, bp.vx || 0) } : { ...bp };
+    });
     return {
       ...b,
       elapsed: mix(a.elapsed || 0, b.elapsed || 0),
       misses: { ...b.misses },
       countdown: b.countdown,
-      players: b.players.map((bp) => {
-        const ap = a.players.find((player) => player.slot === bp.slot);
-        return ap ? { ...bp, x: mix(ap.x, bp.x), w: mix(ap.w, bp.w), vx: mix(ap.vx || 0, bp.vx || 0) } : { ...bp };
-      }),
+      players,
       balls: b.balls.map((bb, index) => {
         const ab = a.balls.find((ball) => ball.id === bb.id) || a.balls[index];
-        return ab
-          ? { ...bb, x: mix(ab.x, bb.x), y: mix(ab.y, bb.y), r: mix(ab.r, bb.r), vx: mix(ab.vx || 0, bb.vx || 0), vy: mix(ab.vy || 0, bb.vy || 0), curve: mix(ab.curve || 0, bb.curve || 0) }
-          : { ...bb };
+        if (!ab) return { ...bb };
+        const directionChanged = Math.sign(ab.vy || 0) !== Math.sign(bb.vy || 0);
+        if (ab.bump || bb.bump || ab.pending || directionChanged) {
+          return projectBall(ab, projectionSeconds, collisionPlayers);
+        }
+        return { ...bb, x: mix(ab.x, bb.x), y: mix(ab.y, bb.y), r: mix(ab.r, bb.r), vx: mix(ab.vx || 0, bb.vx || 0), vy: mix(ab.vy || 0, bb.vy || 0), curve: mix(ab.curve || 0, bb.curve || 0) };
       }),
       power:
         a.power && b.power && a.power.type === b.power.type
@@ -97,43 +111,38 @@ export function createTrajectoryPredictor(state) {
 
   function projectTrajectorySnapshot(snapshot, seconds) {
     if (snapshot.status !== "running" || seconds <= 0) return snapshot;
+    const collisionPlayers = collisionPlayersForProjection(snapshot.players, seconds);
+    const players = snapshot.players.map((player) => ({
+      ...player,
+      x: player.slot === state.slot && state.role === "player"
+        ? clamp(state.predictedPaddleX, player.w / 2 + 4, W - player.w / 2 - 4)
+        : clamp(player.x + (player.vx || 0) * seconds, player.w / 2 + 4, W - player.w / 2 - 4),
+      vx: player.slot === state.slot && state.role === "player" ? state.predictedPaddleVx : player.vx || 0
+    }));
     return {
       ...snapshot,
       elapsed: (snapshot.elapsed || 0) + seconds,
-      players: snapshot.players.map((player) => ({
-        ...player,
-        x: clamp(player.x + (player.vx || 0) * seconds, player.w / 2 + 4, W - player.w / 2 - 4)
-      })),
-      balls: snapshot.balls.map((ball) => projectBall(ball, seconds, snapshot.players))
+      players,
+      balls: snapshot.balls.map((ball) => projectBall(ball, seconds, collisionPlayers))
     };
+  }
+
+  function collisionPlayersForProjection(players, seconds) {
+    return players.map((player) => {
+      if (player.slot !== state.slot || state.role !== "player") return player;
+      const vx = state.predictedPaddleVx || 0;
+      return {
+        ...player,
+        x: clamp(state.predictedPaddleX - vx * seconds, player.w / 2 + 4, W - player.w / 2 - 4),
+        vx
+      };
+    });
   }
 
   function projectBall(ball, seconds, players = []) {
     if (ball.pending) return projectPendingBall(ball, seconds, players);
     pendingVisuals.delete(ball.id ?? 0);
-    let curve = ball.curve || 0;
-    let x = ball.x + (ball.vx || 0) * seconds + 0.5 * curve * seconds * seconds;
-    let vx = (ball.vx || 0) + curve * seconds;
-    const minX = ball.r;
-    const maxX = W - ball.r;
-    for (let bounce = 0; bounce < 3 && (x < minX || x > maxX); bounce += 1) {
-      if (x < minX) {
-        x = minX + (minX - x);
-        vx = Math.abs(vx);
-        curve = Math.abs(curve);
-      } else if (x > maxX) {
-        x = maxX - (x - maxX);
-        vx = -Math.abs(vx);
-        curve = -Math.abs(curve);
-      }
-    }
-    return {
-      ...ball,
-      x: clamp(x, minX, maxX),
-      y: ball.y + (ball.vy || 0) * seconds,
-      vx,
-      curve: curve * Math.exp(-(Number(config.ballSpinDecay) || 1.8) * seconds)
-    };
+    return projectBallWithCollisions(ball, seconds, players);
   }
 
   function projectPendingBall(ball, seconds, players) {
@@ -151,7 +160,15 @@ export function createTrajectoryPredictor(state) {
         .filter((player) => Math.abs(ball.x - player.x) <= player.w / 2 + ball.r + 6)
         .sort((a, b) => Math.abs(ball.x - a.x) - Math.abs(ball.x - b.x));
       const player = candidates[0];
-      if (!player) return { ...ball };
+      if (!player) {
+        visual = {
+          at: performance.now(),
+          players: [],
+          ball: { ...ball, pending: false, bump: false }
+        };
+        pendingVisuals.set(id, visual);
+        return projectBall(visual.ball, seconds, visual.players);
+      }
       const speed = Math.max(1, Math.hypot(ball.vx || 0, ball.vy || 0));
       const offset = clamp((ball.x - player.x) / Math.max(1, player.w / 2), -1, 1);
       const horizontalLimit = speed * Math.sin((68 * Math.PI) / 180);
@@ -159,6 +176,7 @@ export function createTrajectoryPredictor(state) {
       const vy = Math.sqrt(Math.max(speed * speed * 0.13, speed * speed - vx * vx)) * (team === "top" ? 1 : -1);
       visual = {
         at: performance.now(),
+        players,
         ball: {
           ...ball,
           pending: false,
@@ -175,7 +193,7 @@ export function createTrajectoryPredictor(state) {
       pendingVisuals.set(id, visual);
     }
     const age = clamp((performance.now() - visual.at) / 1000 + seconds, 0, 0.26);
-    return projectBall(visual.ball, age, players);
+    return projectBall(visual.ball, age, visual.players);
   }
 
   function entryTime(entry) {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { parseStatePacket } from "../../client/src/network/protocol.js";
+import { encodeTimestamp32 } from "../../server/src/input-timeline.js";
 import { scoredStatePacket, statePacket } from "../../server/src/serialization.js";
 
 const mechanics = {
@@ -24,7 +25,7 @@ describe("state packet protocol", () => {
       ],
       balls: [{ id: 9, x: 500, y: 340, r: 8, vx: 320, vy: -510, curve: 740, bump: 900 }],
       power: { type: "laser", x: 520, y: 320, r: 18 },
-      lastHit: { x: 505, y: 120, at: 990, slot: 0, intensity: 0.8 },
+      lastHit: { x: 505, y: 120, at: 990, presentAt: 1080, slot: 0, intensity: 0.8 },
       lastPower: { type: "laser", team: "bottom", at: 980 },
       spectators: [{}, {}]
     };
@@ -49,6 +50,7 @@ describe("state packet protocol", () => {
     expect(parsed.lastHit.x).toBeCloseTo(505, 1);
     expect(parsed.lastHit.y).toBeCloseTo(120, 1);
     expect(parsed.lastHit.intensity).toBeCloseTo(0.8, 1);
+    expect(parsed.lastHit.at).toBe(encodeTimestamp32(performance.timeOrigin + 1080));
     expect(parsed.lastPower).toMatchObject({ type: "laser", team: "bottom", player: "bottom" });
     expect(parsed.countdown).toBe(2);
     expect(parsed.spectators).toBe(2);

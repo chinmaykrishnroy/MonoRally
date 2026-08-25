@@ -164,6 +164,52 @@ test("another client can join a waiting public room and spectate it in progress"
   await guestContext.close();
 });
 
+test("two quick-match clients pair with each other before AI fallback", async ({ browser, page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "multi-client quick-match contract");
+  const opponentContext = await browser.newContext({ baseURL: "http://127.0.0.1:19087" });
+  const opponent = await opponentContext.newPage();
+  await page.addInitScript(() => { window.__MONORALLY_DEBUG__ = true; });
+  await opponent.addInitScript(() => { window.__MONORALLY_DEBUG__ = true; });
+
+  await openModeStep(page);
+  await openModeStep(opponent);
+  await page.locator("#nameInput").fill("first-rally");
+  await opponent.locator("#nameInput").fill("second-rally");
+  await page.getByRole("button", { name: /Play online/ }).click();
+  await opponent.getByRole("button", { name: /Play online/ }).click();
+  await page.getByRole("button", { name: /Quick match/ }).click();
+  await opponent.getByRole("button", { name: /Quick match/ }).click();
+
+  await expect(page.locator("#game")).toBeVisible();
+  await expect(opponent.locator("#game")).toBeVisible();
+  const firstCode = await readRoomCode(page);
+  const secondCode = await readRoomCode(opponent);
+  expect(secondCode).toBe(firstCode);
+  await expect(page.locator("#status")).toContainText("1v1 rally");
+  await expect(opponent.locator("#status")).toContainText("1v1 rally");
+  await Promise.all([
+    page.waitForFunction(() => window.__MONORALLY_FRAME__?.status === "running"),
+    opponent.waitForFunction(() => window.__MONORALLY_FRAME__?.status === "running")
+  ]);
+  for (const playerPage of [page, opponent]) {
+    const orientation = await playerPage.evaluate(() => {
+      const frame = window.__MONORALLY_FRAME__;
+      return {
+        own: frame.players.find((player) => player.slot === frame.ownSlot)?.team,
+        others: frame.players.filter((player) => player.slot !== frame.ownSlot).map((player) => player.team)
+      };
+    });
+    expect(orientation.own).toBe("bottom");
+    expect(orientation.others).toEqual(["top"]);
+  }
+
+  const room = await page.evaluate((code) => fetch("/rooms.json?offset=0&status=live", { cache: "no-store" })
+    .then((response) => response.json())
+    .then((payload) => payload.rooms.find((entry) => entry.code === code)), firstCode);
+  expect(room).toMatchObject({ code: firstCode, players: 2, maxPlayers: 2, status: "running" });
+  await opponentContext.close();
+});
+
 test("player name and match size survive a refresh", async ({ page }) => {
   await openModeStep(page);
   await page.locator("#nameInput").fill("steady-rally");

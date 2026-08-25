@@ -25,6 +25,7 @@ export const INPUT_FUTURE_TOLERANCE_MS = envNumber("INPUT_FUTURE_TOLERANCE_MS", 
 export const INPUT_SEND_HZ = envNumber("INPUT_SEND_HZ", 60, 20, 120);
 export const INPUT_BUFFER_LIMIT_BYTES = envNumber("INPUT_BUFFER_LIMIT_BYTES", 2048, 256, 65536);
 export const CLOCK_SYNC_INTERVAL_MS = envNumber("CLOCK_SYNC_INTERVAL_MS", 5000, 1000, 30000);
+export const HIT_PRESENTATION_DELAY_MS = envNumber("HIT_PRESENTATION_DELAY_MS", 90, 30, 250);
 export const PADDLE_MAX_SPEED = envNumber("PADDLE_MAX_SPEED", 4200, 500, 12000);
 export const PADDLE_ACCELERATION = envNumber("PADDLE_ACCELERATION", 30000, 1000, 100000);
 export const PADDLE_VELOCITY_TRANSFER = envNumber("PADDLE_VELOCITY_TRANSFER", 0.34, 0, 1);
@@ -53,7 +54,7 @@ export const INPUT_PACKET = 1;
 
 export function publicConfig() {
   return {
-    appVersion: process.env.APP_VERSION || "1.2.1",
+    appVersion: process.env.APP_VERSION || "1.2.5",
     aiDifficulty: envText("AI_DIFFICULTY", "hard", ["easy", "medium", "hard", "insane"]),
     renderDelayMs: envNumber("RENDER_DELAY_MS", 25, 0, 100),
     quickMatchFallbackMs: QUICK_MATCH_FALLBACK_MS,
@@ -73,6 +74,7 @@ export function publicConfig() {
     inputBufferLimitBytes: INPUT_BUFFER_LIMIT_BYTES,
     lateInputGraceMs: LATE_INPUT_GRACE_MS,
     clockSyncIntervalMs: CLOCK_SYNC_INTERVAL_MS,
+    hitPresentationDelayMs: HIT_PRESENTATION_DELAY_MS,
     paddleMaxSpeed: PADDLE_MAX_SPEED,
     paddleAcceleration: PADDLE_ACCELERATION,
     paddleVelocityTransfer: PADDLE_VELOCITY_TRANSFER,

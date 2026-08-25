@@ -1,11 +1,14 @@
 import { H, W, clamp, config } from "../core/shared.js";
 import { createTrajectoryPredictor } from "./trajectory.js";
 import { createCourtViewport } from "./viewport.js";
+import { orientSnapshotForPlayer, orientYForPlayer } from "./view-orientation.js";
 
-export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
+export function createRenderer({ ctx, state, dom, playRumble, nameForSlot, localPerformanceForServerTimestamp = () => performance.now() }) {
   let thunderTimer = 0;
   const ballTrails = [];
   const impactEvents = new Map();
+  const ballImpactEvents = new Map();
+  const ballBumpStates = new Map();
   const mobileVisualQuery = window.matchMedia("(max-width: 820px), (pointer: coarse)");
   let lastImpactToken = "";
   const { clientToCourt, cssPxToCourt, prepareCanvas, viewport } = createCourtViewport(ctx, usesMobileVisuals);
@@ -28,14 +31,26 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
       dom.fillAiBtn.hidden = true;
       dom.matchResult?.classList.add("hidden");
       ballTrails.length = 0;
+      ballImpactEvents.clear();
+      ballBumpStates.clear();
       ctx.restore();
       return;
     }
 
-    const view = viewState(s);
+    const view = orientSnapshotForPlayer(s, state);
+    if (window.__MONORALLY_DEBUG__) {
+      window.__MONORALLY_FRAME__ = {
+        mode: view.mode,
+        status: view.status,
+        ownSlot: state.slot,
+        players: view.players.map((player) => ({ slot: player.slot, team: player.team, x: player.x })),
+        balls: view.balls.map((ball) => ({ id: ball.id, x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, bump: ball.bump }))
+      };
+    }
     if (view.status === "running") updateBallTrails(view.balls || []);
     else ballTrails.length = 0;
     registerImpact(view.lastHit, view.players || []);
+    registerBallImpacts(view.balls || []);
     const replayReady = state.local || (
       state.online &&
       state.role === "player" &&
@@ -166,16 +181,8 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
 
     for (const b of view.balls) {
       const r = visualBallRadius(b.r);
-      drawBall(b, r, fg, inverted);
-      if (b.bump) {
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = fg;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, r * 2.4, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
+      const impact = ballImpact(b);
+      drawBall(b, r, fg, impact.deformation);
     }
 
     if (view.countdown) {
@@ -277,11 +284,11 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     ctx.restore();
   }
 
-  function drawBall(ball, radius, fg, inverted) {
+  function drawBall(ball, radius, fg, impactDeformation = 0) {
     const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
     const angle = Math.atan2(ball.vy || 1, ball.vx || 0);
     const speedStretch = clamp((speed - 380) / 5000, 0, 0.1);
-    const stretch = ball.bump ? 0.24 : speedStretch;
+    const stretch = clamp(speedStretch + impactDeformation, -0.24, 0.2);
     ctx.save();
     ctx.translate(ball.x, ball.y);
     ctx.rotate(angle);
@@ -306,16 +313,52 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
       slot = nearest?.slot;
     }
     if (slot == null) return;
+    const now = performance.now();
+    const presentationAt = state.online && state.clockSynced
+      ? localPerformanceForServerTimestamp(lastHit.at)
+      : now;
     impactEvents.set(slot, {
-      at: performance.now(),
+      at: Number.isFinite(presentationAt) ? presentationAt : now,
       intensity: clamp(Number(lastHit.intensity) || 0.7, 0.35, 1)
     });
+  }
+
+  function registerBallImpacts(balls) {
+    const activeIds = new Set();
+    for (const ball of balls) {
+      const id = ball.id ?? 0;
+      activeIds.add(id);
+      const wasBumped = ballBumpStates.get(id) === true;
+      if (ball.bump && !wasBumped) ballImpactEvents.set(id, { at: performance.now() });
+      ballBumpStates.set(id, Boolean(ball.bump));
+    }
+    for (const id of ballBumpStates.keys()) {
+      if (!activeIds.has(id)) {
+        ballBumpStates.delete(id);
+        ballImpactEvents.delete(id);
+      }
+    }
+  }
+
+  function ballImpact(ball) {
+    const event = ballImpactEvents.get(ball.id ?? 0);
+    if (!event) return { active: false, deformation: 0, envelope: 0 };
+    const age = performance.now() - event.at;
+    if (age < 0) return { active: false, deformation: 0, envelope: 0 };
+    if (age >= 420) {
+      ballImpactEvents.delete(ball.id ?? 0);
+      return { active: false, deformation: 0, envelope: 0 };
+    }
+    const envelope = Math.exp(-age / 145);
+    const deformation = -Math.cos(age / 30) * 0.22 * envelope;
+    return { active: true, deformation, envelope };
   }
 
   function paddleImpact(player) {
     const event = impactEvents.get(player.slot);
     if (!event) return { active: false, recoil: 0, squash: 0 };
     const age = performance.now() - event.at;
+    if (age < 0) return { active: false, recoil: 0, squash: 0 };
     if (age >= 420) {
       impactEvents.delete(player.slot);
       return { active: false, recoil: 0, squash: 0 };
@@ -433,23 +476,6 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     return usesMobileVisuals() ? Math.max(radius, cssPxToCourt(12)) : radius;
   }
 
-  function viewState(snapshot) {
-    if (!snapshot || !shouldFlipView()) return snapshot;
-    return {
-      ...snapshot,
-      misses: {
-        top: snapshot.misses.bottom,
-        bottom: snapshot.misses.top
-      },
-      winner: flipTeam(snapshot.winner),
-      players: snapshot.players.map((player) => ({ ...player, team: flipTeam(player.team) })),
-      balls: snapshot.balls.map((ball) => ({ ...ball, y: H - ball.y, vy: -(ball.vy || 0) })),
-      power: snapshot.power ? { ...snapshot.power, y: H - snapshot.power.y } : null,
-      lastHit: snapshot.lastHit ? { ...snapshot.lastHit, y: H - snapshot.lastHit.y } : null,
-      lastPower: snapshot.lastPower ? { ...snapshot.lastPower, team: flipTeam(snapshot.lastPower.team) } : snapshot.lastPower
-    };
-  }
-
   function scoreText(view) {
     if (state.role === "spectator") return `Top ${view.misses.top} · Bottom ${view.misses.bottom} / ${view.missLimit}`;
     if (view.mode === "2v2") return `Your team ${view.misses.bottom} · Opponents ${view.misses.top} / ${view.missLimit}`;
@@ -479,7 +505,7 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
 
   function winText(snapshot) {
     if (!snapshot.winner) return "Draw";
-    if (state.role === "spectator") return `${capitalize(viewState(snapshot).winner)} team won`;
+    if (state.role === "spectator") return `${capitalize(orientSnapshotForPlayer(snapshot, state).winner)} team won`;
     const ownTeam = state.local ? "bottom" : state.team;
     const won = snapshot.winner === ownTeam;
     if (snapshot.mode === "2v2") return `Your team ${won ? "won" : "lost"}`;
@@ -491,18 +517,8 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
     return text ? text[0].toUpperCase() + text.slice(1) : text;
   }
 
-  function shouldFlipView() {
-    return state.online && state.role === "player" && state.team === "top";
-  }
-
-  function toViewY(y) {
-    return shouldFlipView() ? H - y : y;
-  }
-
-  function flipTeam(team) {
-    if (team === "top") return "bottom";
-    if (team === "bottom") return "top";
-    return team;
+  function toViewY(y, snapshot = state.lastNetState) {
+    return orientYForPlayer(y, snapshot, state);
   }
 
   function drawStagingLobby(view, fg, mid) {
@@ -568,10 +584,12 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot }) {
   }
 
   function clearThunder() {
-    if (thunderTimer) {
-      window.clearTimeout(thunderTimer);
-      thunderTimer = 0;
-    }
+    if (thunderTimer) window.clearTimeout(thunderTimer);
+    thunderTimer = 0;
+    lastImpactToken = "";
+    impactEvents.clear();
+    ballImpactEvents.clear();
+    ballBumpStates.clear();
     document.body.classList.remove("invert", "shake");
   }
 

@@ -117,7 +117,7 @@ export function statePacket(room, now, mechanics, includePlayerScores = false) {
     o += 2;
     packet.writeUInt16LE(encodeRange(lastHit.y, 0, H), o);
     o += 2;
-    packet.writeUInt32LE(encodeTimestamp32(performance.timeOrigin + lastHit.at), o);
+    packet.writeUInt32LE(encodeTimestamp32(performance.timeOrigin + (lastHit.presentAt ?? lastHit.at)), o);
     o += 4;
     packet[o++] = Number.isInteger(lastHit.slot) && lastHit.slot >= 0 ? lastHit.slot : 255;
     packet[o++] = Math.round(clamp01(lastHit.intensity ?? 0.5) * 255);

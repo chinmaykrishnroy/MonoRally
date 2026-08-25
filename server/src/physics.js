@@ -7,6 +7,7 @@ import {
   BALL_SPIN_TRANSFER,
   GAME_ACCEL_SECONDS,
   H,
+  HIT_PRESENTATION_DELAY_MS,
   INPUT_SEND_HZ,
   LATE_INPUT_GRACE_MS,
   MAX_BALLS,
@@ -63,11 +64,16 @@ export function advanceBalls(room, now, dt) {
       ball.bump = now;
     }
 
+    let paddleHit = false;
     for (const player of room.players) {
-      if (!player.disconnected && !player.clientId) collidePaddle(room, player, ball, now, dt);
+      if (player.disconnected) continue;
+      if (collidePaddle(room, player, ball, now, dt)) {
+        paddleHit = true;
+        break;
+      }
     }
 
-    const crossing = paddleCrossing(ball, now, dt);
+    const crossing = paddleHit ? null : paddleCrossing(ball, now, dt);
     if (crossing) {
       queuePendingMiss(room, ball, crossing, now);
       continue;
@@ -191,13 +197,23 @@ function predictBallXAtY(ball, targetY) {
 function collidePaddle(room, player, ball, now, dt) {
   const width = paddleWidth(player, now);
   const movingToward = player.team === "top" ? ball.vy < 0 : ball.vy > 0;
-  if (!movingToward) return;
+  if (!movingToward) return false;
   const crossing = sweptPaddleContact(ball, player.team, width, (t) => paddleCenterDuringStep(player, t));
-  if (!crossing) return;
+  if (!crossing) return false;
   const hitX = crossing.hitX;
   const center = paddleCenterDuringStep(player, crossing.t);
 
-  applyPaddleBounce(room, player, ball, now, hitX, center, Number(player.vx) || 0, paddleContactY(player.team, ball.r));
+  applyPaddleBounce(
+    room,
+    player,
+    ball,
+    now,
+    hitX,
+    center,
+    Number(player.vx) || 0,
+    frontContactY(player.team, ball.r, crossing.hitY)
+  );
+  return true;
 }
 
 function applyPaddleBounce(room, player, ball, now, hitX, center, paddleVelocity, contactY) {
@@ -226,6 +242,7 @@ function applyPaddleBounce(room, player, ball, now, hitX, center, paddleVelocity
     x: ball.x,
     y: player.team === "top" ? 28 : H - 28,
     at: now,
+    presentAt: now + HIT_PRESENTATION_DELAY_MS,
     slot: player.slot,
     score: player.returns,
     intensity: clamp(Math.abs(offset) * 0.45 + Math.abs(paddleVelocity) / PADDLE_MAX_SPEED, 0.2, 1)
@@ -269,8 +286,8 @@ function sweptPaddleContact(ball, team, width, centerAt) {
   const oldX = Number.isFinite(ball.prevX) ? ball.prevX : ball.x;
   const oldY = Number.isFinite(ball.prevY) ? ball.prevY : ball.y;
   const paddleY = team === "top" ? 28 : H - 28;
-  const capRadius = PADDLE_HEIGHT / 2 + ball.r + PADDLE_EDGE_GRACE;
-  const straightHalf = Math.max(0, width / 2 - PADDLE_HEIGHT / 2);
+  const capRadius = PADDLE_HEIGHT / 2 + ball.r;
+  const straightHalf = Math.max(0, width / 2 - PADDLE_HEIGHT / 2 + PADDLE_EDGE_GRACE);
   const intersects = (t) => {
     const relativeX = oldX + (ball.x - oldX) * t - centerAt(t);
     const relativeY = oldY + (ball.y - oldY) * t - paddleY;
@@ -278,7 +295,7 @@ function sweptPaddleContact(ball, team, width, centerAt) {
     return edgeX * edgeX + relativeY * relativeY <= capRadius * capRadius;
   };
   let previousT = 0;
-  if (intersects(previousT)) return { t: 0, hitX: oldX };
+  if (intersects(previousT)) return { t: 0, hitX: oldX, hitY: oldY };
   for (let step = 1; step <= 16; step += 1) {
     const t = step / 16;
     if (!intersects(t)) {
@@ -292,7 +309,11 @@ function sweptPaddleContact(ball, team, width, centerAt) {
       if (intersects(mid)) high = mid;
       else low = mid;
     }
-    return { t: high, hitX: clamp(oldX + (ball.x - oldX) * high, ball.r, W - ball.r) };
+    return {
+      t: high,
+      hitX: clamp(oldX + (ball.x - oldX) * high, ball.r, W - ball.r),
+      hitY: oldY + (ball.y - oldY) * high
+    };
   }
   return null;
 }
@@ -300,6 +321,11 @@ function sweptPaddleContact(ball, team, width, centerAt) {
 function paddleContactY(team, radius) {
   const y = team === "top" ? 28 : H - 28;
   return y + (team === "top" ? PADDLE_HEIGHT / 2 + radius + 1 : -PADDLE_HEIGHT / 2 - radius - 1);
+}
+
+function frontContactY(team, radius, hitY) {
+  const plane = paddleContactY(team, radius);
+  return team === "top" ? Math.max(plane, hitY) : Math.min(plane, hitY);
 }
 
 function fallbackCrossing(ball, team, now) {
@@ -367,7 +393,16 @@ function resolvePendingMiss(room, ball, now) {
   }
   if (catches.length) {
     const caught = catches.sort((a, b) => a.distance - b.distance)[0];
-    applyPaddleBounce(room, caught.player, ball, now, caught.contact.hitX, caught.center, caught.vx, pending.contactY);
+    applyPaddleBounce(
+      room,
+      caught.player,
+      ball,
+      now,
+      caught.contact.hitX,
+      caught.center,
+      caught.vx,
+      frontContactY(pending.team, ball.r, caught.contact.hitY)
+    );
     catchUpResolvedBall(ball, now - pending.crossedAt);
     return;
   }

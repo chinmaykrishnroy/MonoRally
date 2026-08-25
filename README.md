@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.2.4
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.2.4
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.2.5
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.2.5
 ```
 
 For K3s, apply the version-pinned example after the GitHub Release workflow completes:
@@ -129,7 +129,7 @@ Leaderboard records are written to `LEADERBOARD_FILE`. Docker Compose mounts `/d
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.2.4` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.2.5` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 
@@ -148,6 +148,7 @@ INPUT_BUFFER_LIMIT_BYTES=2048
 INPUT_HISTORY_MS=500
 LATE_INPUT_GRACE_MS=220
 CLOCK_SYNC_INTERVAL_MS=5000
+HIT_PRESENTATION_DELAY_MS=90
 LEADERBOARD_FILE=/data/leaderboard.json
 PADDLE_MAX_SPEED=4200
 PADDLE_ACCELERATION=30000

@@ -2,22 +2,13 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/e2e",
+  globalSetup: "./tests/e2e/setup.js",
   timeout: 30000,
   workers: 1,
   reporter: process.env.CI ? [["github"], ["line"]] : "line",
   use: {
     baseURL: "http://127.0.0.1:19087",
     trace: "retain-on-failure"
-  },
-  webServer: {
-    command: "node server/src/index.js",
-    env: {
-      PORT: "19087",
-      QUICK_MATCH_FALLBACK_MS: "5000"
-    },
-    url: "http://127.0.0.1:19087",
-    reuseExistingServer: !process.env.CI,
-    timeout: 15000
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },

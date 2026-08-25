@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: monorally
-          image: ghcr.io/chinmaykrishnroy/monorally:1.2.4
+          image: ghcr.io/chinmaykrishnroy/monorally:1.2.5
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -30,6 +30,8 @@ spec:
               value: "https://mono.prefect-sys.online"
             - name: LEADERBOARD_FILE
               value: "/data/leaderboard.json"
+            - name: HIT_PRESENTATION_DELAY_MS
+              value: "90"
           volumeMounts:
             - name: monorally-data
               mountPath: /data

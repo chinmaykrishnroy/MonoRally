@@ -2,7 +2,7 @@ export const W = 1000;
 export const H = 680;
 
 export const config = {
-  appVersion: "1.2.4",
+  appVersion: "1.2.5",
   aiDifficulty: "hard",
   renderDelayMs: 25,
   quickMatchFallbackMs: 5000,
@@ -20,6 +20,7 @@ export const config = {
   inputBufferLimitBytes: 2048,
   lateInputGraceMs: 220,
   clockSyncIntervalMs: 5000,
+  hitPresentationDelayMs: 90,
   paddleMaxSpeed: 4200,
   paddleAcceleration: 30000,
   paddleVelocityTransfer: 0.34,
