@@ -34,6 +34,23 @@ describe("timestamped paddle input", () => {
     expect(sample.rawX).toBe(900);
   });
 
+  test("records the physically constrained paddle position the client actually rendered", () => {
+    const player = {
+      x: 100,
+      targetX: 900,
+      inputHistory: [{ x: 100, rawX: 900, eventAt: 0, receivedAt: 0, sequence: 0, vx: 0 }]
+    };
+
+    const sample = recordInputSample(
+      player,
+      { x: 900, observedX: 108, observedVx: 480, eventAt: 16, receivedAt: 60, sequence: 1 },
+      { acceleration: 30000, historyMs: 500, maxSpeed: 4200, now: 60 }
+    );
+
+    expect(sample.x).toBeCloseTo(107.68, 1);
+    expect(sample.rawX).toBe(900);
+    expect(sample.observedX).toBe(108);
+  });
   test("projects a sample toward its raw target without overshooting", () => {
     const projected = projectInputSample({ x: 200, rawX: 260, eventAt: 100, vx: 600 }, 300, 4200, 30000);
 

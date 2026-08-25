@@ -20,7 +20,7 @@ export function expandTimestamp32(encoded, referenceEpoch = epochNow()) {
 }
 
 export function normalizeInputTime(encoded, now, historyMs, futureToleranceMs) {
-  if (!Number.isInteger(encoded)) return now;
+  if (!Number.isInteger(encoded) || encoded === 0) return now;
   const eventEpoch = expandTimestamp32(encoded, performance.timeOrigin + now);
   return clamp(eventEpoch - performance.timeOrigin, now - historyMs, now + futureToleranceMs);
 }
@@ -37,16 +37,22 @@ export function recordInputSample(player, sample, options) {
   const history = player.inputHistory;
   const previous = [...history].reverse().find((entry) => entry.eventAt <= sample.eventAt);
   const originX = previous?.x ?? player.x;
+  const requestedX = Number.isFinite(sample.observedX) ? sample.observedX : sample.x;
   const elapsed = Math.max(1 / 240, (sample.eventAt - (previous?.eventAt ?? sample.eventAt - 16)) / 1000);
-  const desiredVelocity = clamp((sample.x - originX) / elapsed, -maxSpeed, maxSpeed);
+  const desiredVelocity = clamp((requestedX - originX) / elapsed, -maxSpeed, maxSpeed);
   const previousVelocity = Number(previous?.vx) || 0;
   let vx = moveToward(previousVelocity, desiredVelocity, acceleration * elapsed);
   let x = clamp(originX + vx * elapsed, originX - maxSpeed * elapsed, originX + maxSpeed * elapsed);
-  if ((sample.x - originX) * (sample.x - x) <= 0) {
-    x = sample.x;
+  if ((requestedX - originX) * (requestedX - x) <= 0) {
+    x = requestedX;
     vx = (x - originX) / elapsed;
   }
-  const entry = { ...sample, rawX: sample.x, x, vx };
+  if (Number.isFinite(sample.observedVx)) {
+    const accelerationLimit = acceleration * elapsed;
+    const claimedVelocity = clamp(sample.observedVx, -maxSpeed, maxSpeed);
+    vx = clamp(claimedVelocity, previousVelocity - accelerationLimit, previousVelocity + accelerationLimit);
+  }
+  const entry = { ...sample, observedX: requestedX, rawX: sample.x, x, vx };
 
   const duplicateIndex = history.findIndex((item) => item.sequence !== null && item.sequence === sample.sequence);
   if (duplicateIndex >= 0) history.splice(duplicateIndex, 1);

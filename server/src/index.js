@@ -134,10 +134,13 @@ function handleBinaryMessage(client, data) {
   const encoded = data.readUInt16BE(1);
   const sequence = data.length >= 5 ? data.readUInt16BE(3) : null;
   const serverTime = data.length >= 9 ? data.readUInt32BE(5) : null;
-  updateClientInput(client, encoded / 65535, sequence, serverTime);
+  const observedX = data.length >= 14 ? (data.readUInt16BE(9) / 65535) * W : null;
+  const observedVx = data.length >= 14 ? (data.readInt16BE(11) / 32767) * PADDLE_MAX_SPEED : null;
+  const timestampTrusted = data.length >= 14 && (data[13] & 1) !== 0;
+  updateClientInput(client, encoded / 65535, sequence, serverTime, observedX, observedVx, timestampTrusted);
 }
 
-function updateClientInput(client, x, sequence = null, encodedServerTime = null) {
+function updateClientInput(client, x, sequence = null, encodedServerTime = null, observedX = null, observedVx = null, timestampTrusted = false) {
   if (!acceptInputSequence(client, sequence)) return;
   if (!allowClientInput(client)) return;
   const now = performance.now();
@@ -147,19 +150,19 @@ function updateClientInput(client, x, sequence = null, encodedServerTime = null)
     if (player) {
       player.targetX = client.inputX * W;
       player.lastInputAt = now;
-      const eventAt = normalizeInputTime(encodedServerTime, now, INPUT_HISTORY_MS, INPUT_FUTURE_TOLERANCE_MS);
+      const eventAt = normalizeInputTime(timestampTrusted ? encodedServerTime : null, now, INPUT_HISTORY_MS, INPUT_FUTURE_TOLERANCE_MS);
       const sampleDelay = clamp(now - eventAt, 0, INPUT_HISTORY_MS);
-      if (Number.isFinite(player.inputDelayMs)) {
+      if (timestampTrusted && Number.isFinite(player.inputDelayMs)) {
         const deviation = Math.abs(sampleDelay - player.inputDelayMs);
         player.inputDelayMs += (sampleDelay - player.inputDelayMs) * 0.12;
         player.inputJitterMs = (Number(player.inputJitterMs) || 0) * 0.82 + deviation * 0.18;
-      } else {
+      } else if (timestampTrusted) {
         player.inputDelayMs = sampleDelay;
         player.inputJitterMs = 0;
       }
       recordInputSample(
         player,
-        { x: player.targetX, eventAt, receivedAt: now, sequence },
+        { x: player.targetX, observedX, observedVx, eventAt, receivedAt: now, sequence },
         { acceleration: PADDLE_ACCELERATION, historyMs: INPUT_HISTORY_MS, maxSpeed: PADDLE_MAX_SPEED, now }
       );
       player.lastProcessedInputSequence = sequence;

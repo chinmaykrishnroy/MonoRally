@@ -139,10 +139,11 @@ export class LocalGame {
     if (!toward) return;
     const contact = this.sweptPaddleContact(player, ball);
     if (!contact) return;
-    const { hitX, t } = contact;
+    const { hitX, hitY, t } = contact;
     const center = player.prevX + (player.x - player.prevX) * t;
     const y = player.team === "top" ? 28 : H - 28;
-    const contactY = y + (player.team === "top" ? 9 + ball.r + 1 : -9 - ball.r - 1);
+    const plane = y + (player.team === "top" ? 9 + ball.r : -9 - ball.r);
+    const contactY = player.team === "top" ? Math.max(plane, hitY) : Math.min(plane, hitY);
 
     ball.x = hitX;
     const offset = clamp((hitX - center) / (player.w / 2), -1, 1);
@@ -182,8 +183,8 @@ export class LocalGame {
     const oldX = Number.isFinite(ball.prevX) ? ball.prevX : ball.x;
     const oldY = Number.isFinite(ball.prevY) ? ball.prevY : ball.y;
     const paddleY = player.team === "top" ? 28 : H - 28;
-    const radius = 9 + ball.r + 6;
-    const straightHalf = Math.max(0, player.w / 2 - 9);
+    const radius = 9 + ball.r;
+    const straightHalf = Math.max(0, player.w / 2 - 9 + 6);
     const intersects = (t) => {
       const center = player.prevX + (player.x - player.prevX) * t;
       const relativeX = oldX + (ball.x - oldX) * t - center;
@@ -192,7 +193,7 @@ export class LocalGame {
       return edgeX * edgeX + relativeY * relativeY <= radius * radius;
     };
     let previousT = 0;
-    if (intersects(0)) return { t: 0, hitX: oldX };
+    if (intersects(0)) return { t: 0, hitX: oldX, hitY: oldY };
     for (let step = 1; step <= 16; step += 1) {
       const t = step / 16;
       if (!intersects(t)) {
@@ -206,7 +207,11 @@ export class LocalGame {
         if (intersects(mid)) high = mid;
         else low = mid;
       }
-      return { t: high, hitX: oldX + (ball.x - oldX) * high };
+      return {
+        t: high,
+        hitX: oldX + (ball.x - oldX) * high,
+        hitY: oldY + (ball.y - oldY) * high
+      };
     }
     return null;
   }

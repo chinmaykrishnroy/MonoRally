@@ -35,33 +35,72 @@ function advanceStep(ball, step, elapsed, players) {
 
   const team = oldVy < 0 ? "top" : oldVy > 0 ? "bottom" : null;
   if (!team) return;
-  const contactY = paddleContactY(team, ball.r);
-  const denominator = ball.y - oldY;
-  if (Math.abs(denominator) < 0.0001) return;
-  const crossing = (contactY - oldY) / denominator;
-  if (crossing < 0 || crossing > 1) return;
-
-  const hitX = oldX + (ball.x - oldX) * crossing;
-  const hitAt = elapsed + step * crossing;
-  const candidates = players
+  const contacts = players
     .filter((player) => player.team === team)
-    .map((player) => ({
-      player,
-      center: player.x + (Number(player.vx) || 0) * hitAt
-    }))
-    .filter(({ player, center }) => Math.abs(hitX - center) <= player.w / 2 + ball.r + PADDLE_EDGE_GRACE)
-    .sort((a, b) => Math.abs(hitX - a.center) - Math.abs(hitX - b.center));
-  if (!candidates.length) return;
+    .map((player) => {
+      const vx = Number(player.vx) || 0;
+      const contact = sweptPaddleContact(
+        oldX,
+        oldY,
+        ball.x,
+        ball.y,
+        team,
+        player.w,
+        ball.r,
+        (t) => player.x + vx * (elapsed + step * t)
+      );
+      if (!contact) return null;
+      const center = player.x + vx * (elapsed + step * contact.t);
+      return { center, contact, player };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.contact.t - b.contact.t || Math.abs(a.contact.hitX - a.center) - Math.abs(b.contact.hitX - b.center));
+  if (!contacts.length) return;
 
-  const { player, center } = candidates[0];
-  applyPredictedBounce(ball, player, hitX, center);
-  const tail = step * (1 - crossing);
-  ball.x = hitX + ball.vx * tail + 0.5 * (ball.curve || 0) * tail * tail;
-  ball.y = contactY + ball.vy * tail;
+  const { center, contact, player } = contacts[0];
+  applyPredictedBounce(ball, player, contact.hitX, center);
+  const tail = step * (1 - contact.t);
+  ball.x = contact.hitX + ball.vx * tail + 0.5 * (ball.curve || 0) * tail * tail;
+  ball.y = frontContactY(team, ball.r, contact.hitY) + ball.vy * tail;
   ball.vx += (ball.curve || 0) * tail;
   reflectSideWalls(ball);
   ball.bump = true;
   ball.predictedImpact = true;
+}
+
+function sweptPaddleContact(oldX, oldY, newX, newY, team, width, radius, centerAt) {
+  const paddleY = team === "top" ? PADDLE_Y_OFFSET : H - PADDLE_Y_OFFSET;
+  const capRadius = PADDLE_HEIGHT / 2 + radius;
+  const straightHalf = Math.max(0, width / 2 - PADDLE_HEIGHT / 2 + PADDLE_EDGE_GRACE);
+  const intersects = (t) => {
+    const relativeX = oldX + (newX - oldX) * t - centerAt(t);
+    const relativeY = oldY + (newY - oldY) * t - paddleY;
+    const edgeX = Math.max(0, Math.abs(relativeX) - straightHalf);
+    return edgeX * edgeX + relativeY * relativeY <= capRadius * capRadius;
+  };
+
+  let previousT = 0;
+  if (intersects(0)) return { t: 0, hitX: oldX, hitY: oldY };
+  for (let sample = 1; sample <= 16; sample += 1) {
+    const t = sample / 16;
+    if (!intersects(t)) {
+      previousT = t;
+      continue;
+    }
+    let low = previousT;
+    let high = t;
+    for (let iteration = 0; iteration < 8; iteration += 1) {
+      const mid = (low + high) / 2;
+      if (intersects(mid)) high = mid;
+      else low = mid;
+    }
+    return {
+      t: high,
+      hitX: clamp(oldX + (newX - oldX) * high, 0, W),
+      hitY: oldY + (newY - oldY) * high
+    };
+  }
+  return null;
 }
 
 function applyPredictedBounce(ball, player, hitX, center) {
@@ -97,5 +136,10 @@ function reflectSideWalls(ball) {
 
 function paddleContactY(team, radius) {
   const y = team === "top" ? PADDLE_Y_OFFSET : H - PADDLE_Y_OFFSET;
-  return y + (team === "top" ? PADDLE_HEIGHT / 2 + radius + 1 : -PADDLE_HEIGHT / 2 - radius - 1);
+  return y + (team === "top" ? PADDLE_HEIGHT / 2 + radius : -PADDLE_HEIGHT / 2 - radius);
+}
+
+function frontContactY(team, radius, hitY) {
+  const plane = paddleContactY(team, radius);
+  return team === "top" ? Math.max(plane, hitY) : Math.min(plane, hitY);
 }

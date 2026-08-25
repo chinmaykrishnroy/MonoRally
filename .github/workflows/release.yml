@@ -76,13 +76,14 @@ jobs:
           body: |
             ## Highlights
 
-            - Fixed 1v1 quick-match pairing so two waiting players occupy opposing sides instead of starting separate AI matches.
-            - Added continuous rounded-paddle collision handling for reliable steep-angle and edge returns.
-            - Removed collision stalls and improved client prediction so online strikes remain fluid under normal latency.
-            - Kept each human player's paddle at the bottom using authoritative slot-based view orientation.
-            - Synchronized strike audio and recoil presentation across clients with clock-offset-aware scheduling.
-            - Sharpened ball rendering and added restrained squash, stretch, and paddle recoil feedback.
-            - Added integration, browser, physics, protocol, presentation, prediction, and orientation regression coverage.
+            - Fixed frame-dependent false misses caused by adjudicating before the ball entered the rounded paddle collider.
+            - Preserved each ball's complete paddle-approach path for authoritative late-input collision checks.
+            - Unified rounded collision geometry across the server, online prediction, practice mode, and rendered hitboxes.
+            - Expanded the compact input packet to 14 bytes so authority can validate the paddle position and velocity the player actually saw.
+            - Stopped trusting client timestamps until clock synchronization is established.
+            - Froze elapsed time at match end and cancelled inversion, shake, rumble audio, and haptics on end or leave.
+            - Added frame-phase, rounded-edge, input reconstruction, timer, and inversion regression coverage.
+
             ## Container image
 
             ```text

@@ -3,7 +3,7 @@ import { createTrajectoryPredictor } from "./trajectory.js";
 import { createCourtViewport } from "./viewport.js";
 import { orientSnapshotForPlayer, orientYForPlayer } from "./view-orientation.js";
 
-export function createRenderer({ ctx, state, dom, playRumble, nameForSlot, localPerformanceForServerTimestamp = () => performance.now() }) {
+export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playRumble, nameForSlot, localPerformanceForServerTimestamp = () => performance.now() }) {
   let thunderTimer = 0;
   const ballTrails = [];
   const impactEvents = new Map();
@@ -19,6 +19,7 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot, local
       dom.statusEl.textContent = "canvas is not available in this browser";
       return;
     }
+    if (s?.status !== "running" && (thunderTimer || document.body.classList.contains("invert") || document.body.classList.contains("shake"))) clearThunder();
     const inverted = document.body.classList.contains("invert");
     prepareCanvas(inverted);
     ctx.save();
@@ -58,7 +59,7 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot, local
     );
     dom.replayBtn.hidden = !(view.status === "ended" && replayReady);
     dom.fillAiBtn.hidden = !(state.online && state.role === "player" && view.mode === "2v2" && view.status === "waiting");
-    maybeThunder(view.elapsed);
+    if (view.status === "running") maybeThunder(view.elapsed);
     dom.timerEl.textContent = String(Math.floor(view.elapsed)).padStart(3, "0");
     dom.missesEl.textContent = scoreText(view);
     updateMatchResult(s, view);
@@ -465,11 +466,11 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot, local
   }
 
   function visualBallRadius(radius) {
-    return usesMobileVisuals() ? Math.max(radius, cssPxToCourt(5.5)) : radius;
+    return radius;
   }
 
   function visualPaddleHeight() {
-    return usesMobileVisuals() ? Math.max(18, cssPxToCourt(13)) : 18;
+    return 18;
   }
 
   function visualPowerRadius(radius) {
@@ -590,6 +591,8 @@ export function createRenderer({ ctx, state, dom, playRumble, nameForSlot, local
     impactEvents.clear();
     ballImpactEvents.clear();
     ballBumpStates.clear();
+    cancelRumble();
+    if ("vibrate" in navigator) navigator.vibrate(0);
     document.body.classList.remove("invert", "shake");
   }
 

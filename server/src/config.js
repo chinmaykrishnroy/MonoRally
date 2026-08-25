@@ -54,7 +54,7 @@ export const INPUT_PACKET = 1;
 
 export function publicConfig() {
   return {
-    appVersion: process.env.APP_VERSION || "1.2.5",
+    appVersion: process.env.APP_VERSION || "1.2.6",
     aiDifficulty: envText("AI_DIFFICULTY", "hard", ["easy", "medium", "hard", "insane"]),
     renderDelayMs: envNumber("RENDER_DELAY_MS", 25, 0, 100),
     quickMatchFallbackMs: QUICK_MATCH_FALLBACK_MS,

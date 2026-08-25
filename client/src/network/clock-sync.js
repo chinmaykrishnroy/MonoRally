@@ -155,5 +155,9 @@ export function createClockSync({ intervalMs = () => 5000, onUpdate = () => {} }
     return { ...estimate, samples: measurements.length };
   }
 
-  return { handle, localPerformanceForServerTimestamp, reset, serverEpochNow, serverTimestamp32, snapshot, start, stop };
+  function isSynced() {
+    return estimate.synced;
+  }
+
+  return { handle, isSynced, localPerformanceForServerTimestamp, reset, serverEpochNow, serverTimestamp32, snapshot, start, stop };
 }

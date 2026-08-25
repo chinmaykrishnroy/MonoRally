@@ -1,4 +1,5 @@
 export function createAudio({ state, settings }) {
+  let rumbleBus = null;
   function unlockAudio() {
     if (!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
     if (state.audio.state !== "running") state.audio.resume();
@@ -26,7 +27,7 @@ export function createAudio({ state, settings }) {
     osc.stop(start + duration + 0.01);
   }
 
-  function sweep(from, to, duration, gain = 0.05, type = "sine", delay = 0) {
+  function sweep(from, to, duration, gain = 0.05, type = "sine", delay = 0, dest = null) {
     if (!state.audio || !settings.sound) return;
     const start = state.audio.currentTime + delay;
     const osc = state.audio.createOscillator();
@@ -36,12 +37,24 @@ export function createAudio({ state, settings }) {
     osc.frequency.exponentialRampToValueAtTime(to, start + duration);
     vol.gain.setValueAtTime(gain, start);
     vol.gain.exponentialRampToValueAtTime(0.001, start + duration);
-    osc.connect(vol).connect(state.audio.destination);
+    osc.connect(vol).connect(dest || state.audio.destination);
     osc.start(start);
     osc.stop(start + duration + 0.01);
   }
 
+  function cancelRumble() {
+    if (!rumbleBus || !state.audio) return;
+    const bus = rumbleBus;
+    rumbleBus = null;
+    const now = state.audio.currentTime;
+    bus.gain.cancelScheduledValues(now);
+    bus.gain.setValueAtTime(Math.max(0.001, bus.gain.value), now);
+    bus.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+    window.setTimeout(() => bus.disconnect(), 40);
+  }
+
   return {
+    cancelRumble,
     unlockAudio,
     playStrike(offset, delay = 0) {
       const bus = master(0.24);
@@ -67,7 +80,9 @@ export function createAudio({ state, settings }) {
     },
     playRumble() {
       if (!state.audio) return;
-      sweep(70, 34, 1.15, 0.07, "sawtooth");
+      cancelRumble();
+      rumbleBus = master(0.22);
+      sweep(70, 34, 1.15, 0.3, "sawtooth", 0, rumbleBus);
     }
   };
 }

@@ -43,6 +43,15 @@ function roomFixture(overrides = {}) {
   };
 }
 
+function advanceFrames(room, startNow, count, beforeFrame = () => {}) {
+  let now = startNow;
+  for (let frame = 0; frame < count; frame += 1) {
+    now += 1000 / 60;
+    beforeFrame(now);
+    advanceBalls(room, now, 1 / 60);
+  }
+  return now;
+}
 function crossingBall(x = W / 2) {
   return { ...makeBall(1), x, y: H - 50, vx: 0, vy: 450, speed: 450, curve: 0 };
 }
@@ -75,8 +84,7 @@ describe("server physics", () => {
     const bottom = player("bottom", 0, { x: 120, targetX: 900 });
     const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall(900)] });
 
-    advanceBalls(room, 1000, 1 / 60);
-    advanceBalls(room, 1250, 1 / 60);
+    advanceFrames(room, 983.333, 20);
 
     expect(room.misses.bottom).toBe(1);
     expect(room.lastHit).toBeUndefined();
@@ -101,9 +109,12 @@ describe("server physics", () => {
     const bottom = player("bottom", 0, { x: 180, targetX: 180, inputDelayMs: 90, inputJitterMs: 10 });
     const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall(760)] });
 
-    advanceBalls(room, 1000, 1 / 60);
-    bottom.inputHistory.push({ x: 760, rawX: 760, eventAt: 990, receivedAt: 1040, sequence: 7, vx: 0 });
-    advanceBalls(room, 1140, 1 / 60);
+    let delivered = false;
+    advanceFrames(room, 983.333, 20, (now) => {
+      if (delivered || now < 1040) return;
+      delivered = true;
+      bottom.inputHistory.push({ x: 760, rawX: 760, eventAt: 990, receivedAt: now, sequence: 7, vx: 0 });
+    });
 
     expect(room.misses.bottom).toBe(0);
     expect(room.balls[0].pendingMiss).toBeNull();
@@ -125,18 +136,48 @@ describe("server physics", () => {
     expect(room.balls[0].y).toBeLessThan(H - 28);
   });
 
-  test("rejects a move that happened after the ball crossed", () => {
+  test("rejects a move that happened after the ball passed the paddle", () => {
     const bottom = player("bottom", 0, { x: 180, targetX: 180, inputDelayMs: 90, inputJitterMs: 10 });
     const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall(760)] });
 
-    advanceBalls(room, 1000, 1 / 60);
-    bottom.inputHistory.push({ x: 760, rawX: 760, eventAt: 1005, receivedAt: 1040, sequence: 7, vx: 0 });
-    advanceBalls(room, 1140, 1 / 60);
+    let delivered = false;
+    advanceFrames(room, 983.333, 30, (now) => {
+      if (delivered || now < 1100) return;
+      delivered = true;
+      bottom.inputHistory.push({ x: 760, rawX: 760, eventAt: 1080, receivedAt: now, sequence: 7, vx: 0 });
+    });
 
     expect(room.misses.bottom).toBe(1);
     expect(room.balls).toHaveLength(0);
   });
 
+
+  test("does not declare a miss in the one-frame gap before centered contact", () => {
+    const bottom = player("bottom", 0, { bot: true, clientId: null });
+    const ball = { ...makeBall(1), x: 500, y: 627, vx: 0, vy: 450, speed: 450, curve: 0 };
+    const room = roomFixture({ players: [bottom, player("top", 1)], balls: [ball] });
+
+    advanceBalls(room, 1000, 1 / 60);
+    expect(room.misses.bottom).toBe(0);
+    expect(room.balls[0].pendingMiss).toBeFalsy();
+
+    advanceBalls(room, 1000 + 1000 / 60, 1 / 60);
+    expect(room.balls[0].vy).toBeLessThan(0);
+    expect(room.misses.bottom).toBe(0);
+  });
+
+  test("allows a rounded-edge approach to enter the collider on the following frame", () => {
+    const bottom = player("bottom", 0, { bot: true, clientId: null, x: 500, prevX: 500 });
+    const ball = { ...makeBall(1), x: 575, y: 629, vx: 0, vy: 360, speed: 360, curve: 0 };
+    const room = roomFixture({ players: [bottom, player("top", 1)], balls: [ball] });
+
+    advanceBalls(room, 1000, 1 / 60);
+    expect(room.balls[0].pendingMiss).toBeFalsy();
+
+    advanceBalls(room, 1000 + 1000 / 60, 1 / 60);
+    expect(room.balls[0].vy).toBeLessThan(0);
+    expect(room.misses.bottom).toBe(0);
+  });
   test("moving paddle transfers momentum and spin to the ball", () => {
     const bottom = player("bottom", 0, { bot: true, clientId: null, prevX: 470, x: 500, vx: 1800 });
     const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall(500)] });

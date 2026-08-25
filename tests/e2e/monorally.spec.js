@@ -26,6 +26,14 @@ async function waitForCourtLayout(page) {
   });
 }
 
+test("inactive screens cancel transient inversion and rumble classes", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => document.body.classList.add("invert", "shake"));
+  await expect.poll(() => page.evaluate(() => ({
+    invert: document.body.classList.contains("invert"),
+    shake: document.body.classList.contains("shake")
+  }))).toEqual({ invert: false, shake: false });
+});
 test("home guides players through a small play flow", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "MonoRally" })).toBeVisible();

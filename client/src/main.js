@@ -109,12 +109,13 @@ const dom = {
   statusEl,
   timerEl
 };
-const { playGameOver, playMiss, playPower, playRumble, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
+const { cancelRumble, playGameOver, playMiss, playPower, playRumble, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
 const { closeModal, ensureHandle, loadConfig, loadSettings, openModal, saveSettings } = createSettingsUi({ elements, state });
 const renderer = createRenderer({
   ctx,
   state,
   dom,
+  cancelRumble,
   playRumble,
   nameForSlot,
   localPerformanceForServerTimestamp: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp)
@@ -328,18 +329,17 @@ function sendInput() {
   state.lastInputSentAt = now;
   state.lastInputSentX = state.inputX;
   state.inputSequence = (state.inputSequence + 1) & 0xffff;
-  const packet = new Uint8Array(9);
+  const packet = new Uint8Array(14);
+  const view = new DataView(packet.buffer);
   const encoded = Math.round(clamp(state.inputX, 0, 1) * 65535);
   packet[0] = 1;
-  packet[1] = encoded >> 8;
-  packet[2] = encoded & 255;
-  packet[3] = state.inputSequence >> 8;
-  packet[4] = state.inputSequence & 255;
+  view.setUint16(1, encoded);
+  view.setUint16(3, state.inputSequence);
   const serverTime = clock.serverTimestamp32();
-  packet[5] = serverTime >>> 24;
-  packet[6] = serverTime >>> 16;
-  packet[7] = serverTime >>> 8;
-  packet[8] = serverTime & 255;
+  view.setUint32(5, clock.isSynced() ? serverTime : 0);
+  view.setUint16(9, Math.round(clamp(state.predictedPaddleX / W, 0, 1) * 65535));
+  view.setInt16(11, Math.round(clamp(state.predictedPaddleVx / (Number(config.paddleMaxSpeed) || 4200), -1, 1) * 32767));
+  packet[13] = clock.isSynced() ? 1 : 0;
   state.ws.send(packet);
 }
 

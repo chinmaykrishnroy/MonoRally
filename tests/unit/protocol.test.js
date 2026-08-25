@@ -54,6 +54,16 @@ describe("state packet protocol", () => {
     expect(parsed.lastPower).toMatchObject({ type: "laser", team: "bottom", player: "bottom" });
     expect(parsed.countdown).toBe(2);
     expect(parsed.spectators).toBe(2);
+
+    room.status = "ended";
+    room.endedAt = 850;
+    const endedPacket = statePacket(room, 2000, mechanics);
+    const ended = parseStatePacket(
+      endedPacket.buffer.slice(endedPacket.byteOffset, endedPacket.byteOffset + endedPacket.byteLength),
+      (slot) => `slot-${slot}`
+    );
+    expect(ended.status).toBe("ended");
+    expect(ended.elapsed).toBeCloseTo(0.35, 4);
   });
 
   test("protocol four carries the scorer total only with a hit event", () => {

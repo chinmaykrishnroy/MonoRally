@@ -10,7 +10,7 @@ export function jsonState(room, now, mechanics) {
     room: room.code,
     mode: room.mode,
     status: room.status,
-    elapsed: room.startedAt ? (now - room.startedAt) / 1000 : 0,
+    elapsed: elapsedSeconds(room, now),
     missLimit: room.missLimit,
     misses: room.misses,
     winner: room.winner,
@@ -162,7 +162,7 @@ export function legacyStatePacket(room, now, mechanics) {
   packet[o++] = Math.min(255, room.spectators.length);
   packet.writeFloatLE(now, o);
   o += 4;
-  packet.writeFloatLE(room.startedAt ? (now - room.startedAt) / 1000 : 0, o);
+  packet.writeFloatLE(elapsedSeconds(room, now), o);
   o += 4;
   packet[o++] = Math.min(255, room.misses.top);
   packet[o++] = Math.min(255, room.misses.bottom);
@@ -237,13 +237,19 @@ function writeHeader(packet, room, now, playerCount, ballCount, hasPower, hasLas
   packet[o++] = Math.min(255, room.spectators.length);
   packet.writeUInt32LE(encodeTimestamp32(performance.timeOrigin + now), o);
   o += 4;
-  packet.writeFloatLE(room.startedAt ? (now - room.startedAt) / 1000 : 0, o);
+  packet.writeFloatLE(elapsedSeconds(room, now), o);
   o += 4;
   packet[o++] = Math.min(255, room.misses.top);
   packet[o++] = Math.min(255, room.misses.bottom);
   packet[o++] = teamCode(room.winner);
   packet[o++] = countdown;
   return o;
+}
+
+function elapsedSeconds(room, now) {
+  if (!room.startedAt) return 0;
+  const effectiveNow = room.status === "ended" && Number.isFinite(room.endedAt) ? room.endedAt : now;
+  return Math.max(0, (effectiveNow - room.startedAt) / 1000);
 }
 
 function activePlayers(room) {
