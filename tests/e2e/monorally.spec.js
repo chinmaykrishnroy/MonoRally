@@ -17,6 +17,15 @@ async function readRoomCode(page) {
   return (await roomValue.textContent()).trim();
 }
 
+async function waitForCourtLayout(page) {
+  await page.waitForFunction(() => {
+    const court = window.__MONORALLY_VIEWPORT__;
+    const hud = document.querySelector(".hud")?.getBoundingClientRect();
+    const status = document.querySelector("#status")?.getBoundingClientRect();
+    return Boolean(court && hud && status && court.y + 1 >= hud.bottom && court.y + court.height <= status.top + 1);
+  });
+}
+
 test("home guides players through a small play flow", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "MonoRally" })).toBeVisible();
@@ -263,7 +272,7 @@ for (const project of ["iPhone 16", "iPhone 16 landscape", "tablet"]) {
       localStorage.setItem("monorally-coach-v1", "done");
     });
     await startPractice(page);
-    await page.waitForFunction(() => Boolean(window.__MONORALLY_VIEWPORT__));
+    await waitForCourtLayout(page);
 
     const metrics = await page.evaluate(() => {
       const box = (selector) => {
@@ -298,7 +307,7 @@ test("portrait court is top aligned above the thumb control region", async ({ pa
     localStorage.setItem("monorally-coach-v1", "done");
   });
   await startPractice(page);
-  await page.waitForFunction(() => Boolean(window.__MONORALLY_VIEWPORT__));
+  await waitForCourtLayout(page);
 
   const layout = await page.evaluate(() => {
     const hud = document.querySelector(".hud").getBoundingClientRect();
