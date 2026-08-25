@@ -235,6 +235,9 @@ test("quick 2v2 falls back to a public, spectatable AI-filled match", async ({ b
   await expect(page.locator("#modeLabel")).toContainText("2v2");
   const code = (await page.locator("#roomValue").textContent())?.trim();
 
+  const waitingSnapshot = await spectator.evaluate(() => fetch("/rooms.json?offset=0&status=waiting", { cache: "no-store" }).then((response) => response.json()));
+  expect(waitingSnapshot.rooms).toEqual(expect.arrayContaining([expect.objectContaining({ code, status: "waiting" })]));
+  await spectator.getByRole("tab", { name: "Waiting" }).click();
   const waitingRoom = spectator.locator(".roomItem", { hasText: code });
   await expect(waitingRoom).toBeVisible();
   await expect(waitingRoom.getByRole("button", { name: "Join" })).toBeVisible();

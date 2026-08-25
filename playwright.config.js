@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: "tests/e2e",
   timeout: 30000,
   workers: 1,
+  reporter: process.env.CI ? [["github"], ["line"]] : "line",
   use: {
     baseURL: "http://127.0.0.1:19087",
     trace: "retain-on-failure"
