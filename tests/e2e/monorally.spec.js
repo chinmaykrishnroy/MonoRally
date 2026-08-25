@@ -11,6 +11,12 @@ async function startPractice(page) {
   await expect(page.locator("#game")).toBeVisible();
 }
 
+async function readRoomCode(page) {
+  const roomValue = page.locator("#roomValue");
+  await expect(roomValue).toHaveText(/^[A-F0-9]{6}$/);
+  return (await roomValue.textContent()).trim();
+}
+
 test("home guides players through a small play flow", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "MonoRally" })).toBeVisible();
@@ -121,8 +127,7 @@ test("another client can join a waiting public room and spectate it in progress"
   await page.getByRole("button", { name: /Play online/ }).click();
   await page.getByRole("button", { name: /Public rooms/ }).click();
   await page.getByRole("button", { name: "Host public 1v1" }).click();
-  const code = (await page.locator("#roomValue").textContent())?.trim();
-  expect(code).toMatch(/^[A-F0-9]{6}$/);
+  const code = await readRoomCode(page);
 
   const guestContext = await browser.newContext({ baseURL: "http://127.0.0.1:19087" });
   const guest = await guestContext.newPage();
@@ -166,8 +171,7 @@ test("iPhone can start and reconnect to a quick match", async ({ page }, testInf
   await page.getByRole("button", { name: /Play online/ }).click();
   await page.getByRole("button", { name: /Quick match/ }).click();
   await expect(page.locator("#game")).toBeVisible({ timeout: 7000 });
-  const code = (await page.locator("#roomValue").textContent())?.trim();
-  expect(code).toMatch(/^[A-F0-9]{6}$/);
+  const code = await readRoomCode(page);
 
   await page.reload();
   await expect(page.locator("#game")).toBeVisible({ timeout: 5000 });
@@ -182,7 +186,7 @@ test("iPhone can join a public room without refresh flicker", async ({ browser, 
   await host.getByRole("button", { name: /Play online/ }).click();
   await host.getByRole("button", { name: /Public rooms/ }).click();
   await host.getByRole("button", { name: "Host public 1v1" }).click();
-  const code = (await host.locator("#roomValue").textContent())?.trim();
+  const code = await readRoomCode(host);
 
   await openModeStep(page);
   await page.getByRole("button", { name: /Play online/ }).click();
@@ -204,7 +208,7 @@ test("joining the same match in a new tab transfers the player session", async (
   await page.getByRole("button", { name: /Play online/ }).click();
   await page.getByRole("button", { name: /Quick match/ }).click();
   await expect(page.locator("#game")).toBeVisible({ timeout: 7000 });
-  const code = (await page.locator("#roomValue").textContent())?.trim();
+  const code = await readRoomCode(page);
 
   const replacement = await context.newPage();
   await openModeStep(replacement);
@@ -233,7 +237,7 @@ test("quick 2v2 falls back to a public, spectatable AI-filled match", async ({ b
   await page.getByRole("button", { name: /Quick match/ }).click();
   await expect(page.locator("#game")).toBeVisible({ timeout: 7000 });
   await expect(page.locator("#modeLabel")).toContainText("2v2");
-  const code = (await page.locator("#roomValue").textContent())?.trim();
+  const code = await readRoomCode(page);
 
   const waitingSnapshot = await spectator.evaluate(() => fetch("/rooms.json?offset=0&status=waiting", { cache: "no-store" }).then((response) => response.json()));
   expect(waitingSnapshot.rooms).toEqual(expect.arrayContaining([expect.objectContaining({ code, status: "waiting" })]));
