@@ -51,6 +51,7 @@ export class WorkerService {
     this.maxRooms = maxRooms;
 
     this.rooms = new Map();
+    this.draining = false;
     this.stateMechanics = { countdownValue, empStrength, laserStrength, paddleWidth };
     const lifecycle = createRoomLifecycle(this.rooms);
     this.makeRoom = lifecycle.makeRoom;
@@ -137,11 +138,42 @@ export class WorkerService {
     await this.workerRegistry.registerWorkerHeartbeat(
       {
         workerId: this.workerId,
+        status: this.draining ? "draining" : "ready",
         activeRooms: this.rooms.size,
         maxRooms: this.maxRooms
       },
       10
     );
+  }
+
+  async drain(maxDrainTimeoutMs = 90000) {
+    if (this.draining) return;
+    this.draining = true;
+    await this.workerRegistry.markWorkerDraining(this.workerId, Math.ceil(maxDrainTimeoutMs / 1000));
+    await this.heartbeat();
+
+    if (this.rooms.size === 0) {
+      await this.stop();
+      return;
+    }
+
+    return new Promise((resolve) => {
+      let timer = null;
+      const checkInterval = setInterval(async () => {
+        if (this.rooms.size === 0) {
+          clearInterval(checkInterval);
+          if (timer) clearTimeout(timer);
+          await this.stop();
+          resolve();
+        }
+      }, 250);
+
+      timer = setTimeout(async () => {
+        clearInterval(checkInterval);
+        await this.stop();
+        resolve();
+      }, maxDrainTimeoutMs);
+    });
   }
 
   async renewLeases() {
@@ -151,6 +183,9 @@ export class WorkerService {
   }
 
   async allocateRoom(config) {
+    if (this.draining) {
+      return { ok: false, error: "Worker is draining" };
+    }
     if (this.rooms.size >= this.maxRooms) {
       return { ok: false, error: "Worker capacity reached" };
     }
@@ -540,6 +575,17 @@ export class WorkerService {
     const now = performance.now();
     const dt = Math.min(0.034, (now - room.lastTick) / 1000);
     room.lastTick = now;
+
+    if (room.status === "ended") {
+      const endedDuration = now - (room.endedAt || now);
+      if (this.draining || endedDuration > 15000) {
+        this.rooms.delete(room.code);
+        this.workerRegistry.releaseRoomLease(room.code, this.workerId);
+        return;
+      }
+      this.publishState(room, now);
+      return;
+    }
 
     if (room.status !== "running") {
       this.publishState(room, now);

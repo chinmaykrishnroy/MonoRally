@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.0] - 2026-09-23
+
+### Highlights
+- Worker Draining & Zero-Match-Drop Upgrades: Simulation workers entering shutdown flag themselves as `draining` in Redis, reject new match allocations, allow ongoing matches to finish cleanly, and terminate gracefully via `terminationGracePeriodSeconds: 120`.
+- Automated Traffic Redirection: Matchmaker automatically diverts new incoming matchmaking traffic to healthy, ready workers while draining workers complete existing matches.
+- Kubernetes Dynamic Autoscaling (HPA): Created Horizontal Pod Autoscaler configurations for stateless Gateway pods (3 to 50 replicas) and simulation Worker pods (4 to 100 replicas) based on CPU and memory utilization.
+- High Availability & Disruption Budgets (PDB): Configured PodDisruptionBudgets enforcing minimum replica availability during voluntary Kubernetes node maintenance and rolling upgrades.
+- Crash Recovery & Stale Lease Pruning: Ephemeral Redis room leases automatically expire and are purged if a worker encounters an abrupt fault, preventing orphaned room locks.
+- Added `POST /drain` endpoint to the HTTP server for triggering graceful draining via Kubernetes container `preStop` hooks.
+
+### Added
+- `WorkerService.prototype.drain()` method with graceful match completion monitoring and configurable timeout safety.
+- `markWorkerDraining()` and `cleanStaleLeases()` in `WorkerRegistry` (`server/src/redis/worker-registry.js`).
+- `POST /drain` HTTP route in `server/src/http.js` and drain handling in `server/src/index.js`.
+- Kubernetes autoscaling and disruption manifests in `deploy/k3s/autoscaling.yaml` (HPA & PDB).
+- `terminationGracePeriodSeconds: 120` and `preStop` lifecycle hook in `deploy/k3s/distributed.yaml`.
+- Worker draining unit test suite (`tests/unit/worker-draining.test.js`).
+- Resilience, rolling update, and crash recovery chaos integration test suite (`tests/integration/resilience-chaos.test.js`).
+
+### Changed
+- `WorkerRegistry.getLeastLoadedWorker()` now strictly filters out workers in `draining` status.
+- `WorkerService.tickRoom()` prunes finished rooms when draining or after post-game countdowns.
+
 ## [v1.4.0] - 2026-09-23
 
 ### Highlights

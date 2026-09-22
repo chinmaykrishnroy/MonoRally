@@ -56,7 +56,7 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/chinmaykrishnroy/monorally:1.4.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.5.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -120,10 +120,15 @@ spec:
       labels:
         app.kubernetes.io/name: monorally-worker
     spec:
+      terminationGracePeriodSeconds: 120
       containers:
         - name: worker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.4.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.5.0
           imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "node -e \"fetch('http://127.0.0.1:8787/drain', {method:'POST'}).catch(()=>{})\""]
           env:
             - name: SERVICE_ROLE
               value: "worker"
@@ -166,7 +171,7 @@ spec:
     spec:
       containers:
         - name: matchmaker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.4.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.5.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SERVICE_ROLE

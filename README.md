@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.4.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.4.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.5.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.5.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -129,18 +129,23 @@ Or deploy the horizontally scalable multi-pod distributed cluster (Gateways + Wo
 kubectl apply -f deploy/k3s/distributed.yaml
 ```
 
+To enable dynamic autoscaling (HPA) and disruption budgets (PDB):
+
+```bash
+kubectl apply -f deploy/k3s/autoscaling.yaml
+```
+
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.4.0`, MonoRally supports fully decoupled distributed execution capable of scaling to 200+ worker and gateway replicas:
-- **Gateway Pods**: Terminate client WebSockets, authenticate sessions, enforce sliding-window rate limits, and route player inputs.
-- **Worker Pods**: Own active match rooms, run 60 Hz physics loops in worker RAM with continuous swept collision detection, and broadcast 30 Hz compressed snapshots via NATS.
-- **Matchmaker**: Coordinates matchmaking queues and selects least-loaded workers via Redis capacity leases.
-- **NATS Core**: Provides microsecond-latency pub/sub and request-reply between gateways, workers, and matchmakers.
-- **Unified Mode**: Seamless fallback runs all roles in a single process over an in-memory event bus (`MemoryBus`) for zero-dependency local development and CI testing.
+As of `v1.5.0`, MonoRally provides enterprise-grade operational resilience and dynamic elasticity:
+- **Worker Draining & Zero-Match-Drop Upgrades**: Simulation workers entering shutdown flag themselves as `draining` in Redis, reject new match allocations, allow ongoing matches to finish cleanly, and terminate gracefully via `terminationGracePeriodSeconds: 120`.
+- **Dynamic Autoscaling (HPA)**: Automatically scales stateless Gateway pods (3 to 50 replicas) and simulation Worker pods (4 to 100 replicas) based on CPU and memory utilization.
+- **High Availability & Disruption Budgets (PDB)**: Enforces minimum available replicas (`minAvailable: 2`) during voluntary Kubernetes node maintenance or upgrades.
+- **Crash Recovery & Stale Lease Pruning**: Ephemeral Redis room leases automatically expire or get purged if a worker encounters an abrupt fault, protecting player state and preventing orphaned locks.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.4.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.5.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 

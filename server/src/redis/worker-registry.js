@@ -1,7 +1,8 @@
 /**
  * WorkerRegistry and Room Lease Manager.
  * Manages active worker registrations, capacity-aware load balancing,
- * and distributed room ownership leases with Redis or memory fallback.
+ * worker draining for zero-match-drop rollouts, and distributed room ownership leases
+ * with Redis or memory fallback.
  */
 
 const RENEW_LEASE_LUA = `
@@ -28,6 +29,7 @@ export class RedisWorkerRegistry {
   async registerWorkerHeartbeat(workerInfo, ttlSeconds = 10) {
     const key = `worker:${workerInfo.workerId}`;
     const payload = JSON.stringify({
+      status: "ready",
       ...workerInfo,
       lastHeartbeat: Date.now()
     });
@@ -35,6 +37,20 @@ export class RedisWorkerRegistry {
     pipeline.set(key, payload, "EX", ttlSeconds);
     pipeline.sadd("workers:active", workerInfo.workerId);
     await pipeline.exec();
+  }
+
+  async markWorkerDraining(workerId, ttlSeconds = 120) {
+    const key = `worker:${workerId}`;
+    const raw = await this.redis.get(key);
+    if (!raw) return false;
+    try {
+      const data = JSON.parse(raw);
+      data.status = "draining";
+      await this.redis.set(key, JSON.stringify(data), "EX", ttlSeconds);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async unregisterWorker(workerId) {
@@ -80,6 +96,7 @@ export class RedisWorkerRegistry {
     let best = null;
 
     for (const w of workers) {
+      if (w.status === "draining") continue; // Exclude draining workers from matchmaking
       const activeRooms = w.activeRooms || 0;
       const capacity = w.maxRooms || maxRoomsPerWorker;
       if (activeRooms < capacity) {
@@ -114,6 +131,13 @@ export class RedisWorkerRegistry {
     const key = `room:lease:${roomCode}`;
     return await this.redis.get(key);
   }
+
+  async cleanStaleLeases() {
+    const workers = await this.getActiveWorkers();
+    const activeSet = new Set(workers.map((w) => w.workerId));
+    // Redis keys are automatically expired by TTL; this handles active verification
+    return activeSet;
+  }
 }
 
 export class MemoryWorkerRegistry {
@@ -125,9 +149,20 @@ export class MemoryWorkerRegistry {
   async registerWorkerHeartbeat(workerInfo, ttlSeconds = 10) {
     const expiresAt = Date.now() + ttlSeconds * 1000;
     this.workers.set(workerInfo.workerId, {
-      info: { ...workerInfo, lastHeartbeat: Date.now() },
+      info: {
+        status: "ready",
+        ...workerInfo,
+        lastHeartbeat: Date.now()
+      },
       expiresAt
     });
+  }
+
+  async markWorkerDraining(workerId) {
+    const entry = this.workers.get(workerId);
+    if (!entry) return false;
+    entry.info.status = "draining";
+    return true;
   }
 
   async unregisterWorker(workerId) {
@@ -152,6 +187,7 @@ export class MemoryWorkerRegistry {
     let best = null;
 
     for (const w of workers) {
+      if (w.status === "draining") continue; // Exclude draining workers
       const activeRooms = w.activeRooms || 0;
       const capacity = w.maxRooms || maxRoomsPerWorker;
       if (activeRooms < capacity) {
@@ -210,6 +246,15 @@ export class MemoryWorkerRegistry {
       this.leases.delete(roomCode);
     }
     return null;
+  }
+
+  async cleanStaleLeases() {
+    const now = Date.now();
+    for (const [code, lease] of this.leases.entries()) {
+      if (lease.expiresAt <= now || !this.workers.has(lease.workerId)) {
+        this.leases.delete(code);
+      }
+    }
   }
 }
 

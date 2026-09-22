@@ -98,7 +98,29 @@ const { broadcastRooms, broadcastRoster, pruneRooms, publicRoomPage, publicRooms
   stateMechanics
 });
 
-const server = createHttpServer({ checkHealth, leaderboard, publicRoomPage });
+let draining = false;
+async function handleDrain() {
+  if (draining) return;
+  draining = true;
+  console.log("[server] Graceful draining initiated...");
+  if (workerRegistry) await workerRegistry.markWorkerDraining(WORKER_ID);
+  if (rooms.size === 0) {
+    await shutdown();
+    return;
+  }
+  const check = setInterval(async () => {
+    if (rooms.size === 0) {
+      clearInterval(check);
+      await shutdown();
+    }
+  }, 500);
+  setTimeout(async () => {
+    clearInterval(check);
+    await shutdown();
+  }, 90000);
+}
+
+const server = createHttpServer({ checkHealth, leaderboard, publicRoomPage, onDrain: handleDrain });
 attachWebSocketServer(server, {
   broadcastRooms,
   clients,

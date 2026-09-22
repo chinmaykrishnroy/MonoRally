@@ -2,7 +2,7 @@ export const W = 1000;
 export const H = 680;
 
 export const config = {
-  appVersion: "1.4.0",
+  appVersion: "1.5.0",
   aiDifficulty: "hard",
   renderDelayMs: 25,
   quickMatchFallbackMs: 5000,

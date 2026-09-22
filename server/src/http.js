@@ -21,7 +21,7 @@ const MIME = {
 
 const NO_STORE_EXTENSIONS = new Set([".html", ".js", ".css", ".webmanifest"]);
 
-export function createHttpServer({ checkHealth, leaderboard, publicRoomPage } = {}) {
+export function createHttpServer({ checkHealth, leaderboard, publicRoomPage, onDrain } = {}) {
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -33,7 +33,7 @@ export function createHttpServer({ checkHealth, leaderboard, publicRoomPage } = 
 
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
-        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type"
       });
       res.end();
@@ -42,6 +42,18 @@ export function createHttpServer({ checkHealth, leaderboard, publicRoomPage } = 
 
     const requestUrl = new URL(req.url, `http://${req.headers.host}`);
     const requested = decodeURIComponent(requestUrl.pathname);
+
+    if (requested === "/drain") {
+      if (onDrain) {
+        Promise.resolve(onDrain()).catch((err) => console.error("[http] onDrain error:", err));
+      }
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      res.end(JSON.stringify({ draining: true }));
+      return;
+    }
 
     if (requested === "/health/live") {
       res.writeHead(200, {
