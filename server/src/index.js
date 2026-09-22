@@ -50,9 +50,14 @@ import {
 import { canReplayRoom, createRoomLifecycle } from "./room-lifecycle.js";
 import { clamp, cleanName, cleanSession, generatedName, rand, requestedTeam, startingXForSlot } from "./utils.js";
 import { broadcast, closeClient, send, sendPing } from "./ws.js";
+import { createEventBus } from "./bus/index.js";
+import { createWorkerRegistry } from "./redis/worker-registry.js";
+import { BUS_TYPE, NATS_URL, SERVICE_ROLE, WORKER_ID } from "./config.js";
 
 const pool = DATA_BACKEND === "postgres" && DATABASE_URL ? createDatabasePool(DATABASE_URL) : null;
 const redis = REDIS_URL ? createRedisClient(REDIS_URL) : null;
+const bus = await createEventBus({ type: BUS_TYPE, url: NATS_URL });
+const workerRegistry = createWorkerRegistry(redis);
 
 if (pool) {
   try {
@@ -76,7 +81,9 @@ async function checkHealth() {
   return {
     ready: dbHealth.healthy && redisHealth.healthy,
     database: dbHealth,
-    redis: redisHealth
+    redis: redisHealth,
+    role: SERVICE_ROLE,
+    bus: BUS_TYPE
   };
 }
 
@@ -130,6 +137,8 @@ async function shutdown() {
   clearInterval(heartbeatTimer);
   for (const room of rooms.values()) clearRoomTimer(room);
   for (const client of clients.values()) client.socket.destroy();
+  if (workerRegistry) await workerRegistry.unregisterWorker(WORKER_ID);
+  if (bus) await bus.close();
   await closeDatabasePool(pool);
   await closeRedisClient(redis);
   server.close(() => process.exit(0));

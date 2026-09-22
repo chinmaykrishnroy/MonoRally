@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: monorally
-          image: ghcr.io/chinmaykrishnroy/monorally:1.3.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.4.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

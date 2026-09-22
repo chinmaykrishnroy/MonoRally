@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.0] - 2026-09-23
+
+### Highlights
+- Decoupled connection termination from physics simulation: introduced dedicated, horizontally scalable service roles (`Gateway`, `Worker`, and `Matchmaker`) capable of scaling to 200+ replicas.
+- Added low-latency messaging via NATS Core (`NatsBus`) for wire-speed pub/sub and RPC routing of client inputs, room commands, and 30 Hz compressed snapshot broadcasts.
+- Built a high-performance in-memory event bus (`MemoryBus`) with full NATS wildcard semantics (`*`, `>`) and request-reply inboxes, ensuring unified deployments and CI test suites run with zero external broker dependencies.
+- Implemented Redis-backed worker capacity discovery and distributed room ownership leases (`room:lease:<roomCode>`) using atomic Lua scripts for renewals and releases to guarantee single-worker simulation ownership.
+- Added multi-pod distributed Kubernetes deployment manifests (`deploy/k3s/distributed.yaml`) separating stateless Gateways, simulation Workers, Matchmaker, and NATS cluster.
+
+### Added
+- Abstract `EventBus` interface and factory (`server/src/bus/index.js`), in-memory bus (`server/src/bus/memory-bus.js`), and NATS client bus (`server/src/bus/nats-bus.js`).
+- Distributed worker registry and room lease manager (`server/src/redis/worker-registry.js`).
+- `GatewayService` (`server/src/services/gateway-service.js`) for WebSocket termination, session validation, and bus multiplexing.
+- `WorkerService` (`server/src/services/worker-service.js`) for RAM-isolated 60 Hz physics simulation and continuous collision detection.
+- `MatchmakerService` (`server/src/services/matchmaker-service.js`) for 1v1 and 2v2 queuing and capacity-aware worker dispatch.
+- Event bus unit test suite (`tests/unit/event-bus.test.js`) and worker registry unit test suite (`tests/unit/worker-registry.test.js`).
+- Multi-replica distributed multiplayer integration test (`tests/integration/distributed-multiplayer.test.js`) verifying cross-gateway client pairing, input routing, and snapshot delivery.
+- Docker Compose configuration updated with NATS 2.10 service.
+- Kubernetes multi-replica deployment manifests in `deploy/k3s/distributed.yaml`.
+
+### Changed
+- Server bootstrap in `server/src/index.js` now initializes event bus and worker registry and supports `SERVICE_ROLE` (`unified`, `gateway`, `worker`, `matchmaker`).
+- Readiness probe now reports active service role and message bus backend.
+- Updated `.env.example` with `SERVICE_ROLE`, `BUS_TYPE`, `NATS_URL`, and `NATS_PORT`.
+
 ## [v1.3.0] - 2026-09-23
 
 ### Highlights

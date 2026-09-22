@@ -31,6 +31,13 @@ services:
       timeout: 5s
       retries: 5
 
+  nats:
+    image: nats:2.10-alpine
+    container_name: monorally-nats
+    restart: unless-stopped
+    ports:
+      - "${NATS_PORT:-14222}:4222"
+
   monorally:
     build:
       context: .
@@ -43,7 +50,10 @@ services:
     environment:
       DATABASE_URL: "${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/monorally}"
       REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
+      NATS_URL: "${NATS_URL:-nats://nats:4222}"
       DATA_BACKEND: "${DATA_BACKEND:-postgres}"
+      BUS_TYPE: "${BUS_TYPE:-nats}"
+      SERVICE_ROLE: "${SERVICE_ROLE:-unified}"
     ports:
       - "${APP_HOST_PORT:-18787}:${PORT:-8787}"
     depends_on:
@@ -51,6 +61,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      nats:
+        condition: service_started
     init: true
     restart: unless-stopped
     healthcheck:

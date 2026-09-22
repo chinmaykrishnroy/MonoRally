@@ -113,23 +113,34 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.3.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.3.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.4.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.4.0
 ```
 
-For K3s, apply the version-pinned example after the GitHub Release workflow completes:
+For K3s, apply the unified single-pod example:
 
 ```bash
 kubectl apply -f deploy/k3s/monorally.yaml
 ```
 
+Or deploy the horizontally scalable multi-pod distributed cluster (Gateways + Workers + Matchmaker + NATS):
+
+```bash
+kubectl apply -f deploy/k3s/distributed.yaml
+```
+
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.3.0`, MonoRally pods are completely stateless and support zero-downtime rolling updates. Durable state (players, match histories, leaderboards) is stored in PostgreSQL, and ephemeral state (sessions, presence, rate limits, leaderboard caches) is backed by Redis. Production containers no longer require local PersistentVolumeClaims. Health probes are served at `/health/live` (liveness) and `/health/ready` (readiness with DB & Redis validation).
+As of `v1.4.0`, MonoRally supports fully decoupled distributed execution capable of scaling to 200+ worker and gateway replicas:
+- **Gateway Pods**: Terminate client WebSockets, authenticate sessions, enforce sliding-window rate limits, and route player inputs.
+- **Worker Pods**: Own active match rooms, run 60 Hz physics loops in worker RAM with continuous swept collision detection, and broadcast 30 Hz compressed snapshots via NATS.
+- **Matchmaker**: Coordinates matchmaking queues and selects least-loaded workers via Redis capacity leases.
+- **NATS Core**: Provides microsecond-latency pub/sub and request-reply between gateways, workers, and matchmakers.
+- **Unified Mode**: Seamless fallback runs all roles in a single process over an in-memory event bus (`MemoryBus`) for zero-dependency local development and CI testing.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.3.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.4.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 
@@ -138,9 +149,14 @@ Common options:
 ```env
 APP_HOST_PORT=18787
 PORT=8787
+SERVICE_ROLE=unified
+BUS_TYPE=memory
 DATA_BACKEND=postgres
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/monorally
 REDIS_URL=redis://redis:6379
+NATS_URL=nats://nats:4222
+WORKER_CAPACITY_MAX_ROOMS=50
+ROOM_LEASE_TTL_SECONDS=15
 CORS_ORIGINS=http://localhost:18787,http://127.0.0.1:18787,http://192.168.0.5:18787,https://mono.prefect-sys.online
 
 PHYSICS_HZ=60
