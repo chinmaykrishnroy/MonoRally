@@ -4,6 +4,61 @@
   --muted: #a3a3a3;
   --line: #303030;
   --soft: #151515;
+  --accent: #00f0ff;
+  --accent-glow: rgba(0, 240, 255, 0.35);
+  --accent-soft: rgba(0, 240, 255, 0.12);
+}
+
+[data-theme="cyan"] {
+  --accent: #00f0ff;
+  --accent-glow: rgba(0, 240, 255, 0.35);
+  --accent-soft: rgba(0, 240, 255, 0.12);
+}
+
+[data-theme="amber"] {
+  --accent: #ffb700;
+  --accent-glow: rgba(255, 183, 0, 0.35);
+  --accent-soft: rgba(255, 183, 0, 0.12);
+}
+
+[data-theme="emerald"] {
+  --accent: #00ff88;
+  --accent-glow: rgba(0, 255, 136, 0.35);
+  --accent-soft: rgba(0, 255, 136, 0.12);
+}
+
+[data-theme="violet"] {
+  --accent: #bf5af2;
+  --accent-glow: rgba(191, 90, 242, 0.35);
+  --accent-soft: rgba(191, 90, 242, 0.12);
+}
+
+[data-theme="classic"] {
+  --accent: #ffffff;
+  --accent-glow: rgba(255, 255, 255, 0.25);
+  --accent-soft: rgba(255, 255, 255, 0.1);
+}
+
+[data-contrast="high"] {
+  --line: #777777;
+  --soft: #282828;
+  --muted: #d0d0d0;
+}
+
+[data-contrast="high"] button {
+  border-width: 2px;
+}
+
+[data-contrast="high"] input,
+[data-contrast="high"] select {
+  border-width: 2px;
+  border-color: #888888;
+}
+
+[data-contrast="high"] .hudIdentity > *,
+[data-contrast="high"] .hudScore > *,
+[data-contrast="high"] .hudActions > * {
+  border-width: 2px;
 }
 
 * {
@@ -94,7 +149,8 @@ select {
 
 input:focus,
 select:focus {
-  border-color: var(--fg);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
 }
 
 label {
@@ -599,6 +655,11 @@ body.game-active .game {
   color: #aaa;
   font-size: 11px;
   white-space: nowrap;
+}
+
+.networkBadge[data-quality="good"] {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .networkBadge[data-quality="slow"] {

@@ -95,6 +95,8 @@ const {
   settingsName,
   aiDifficulty,
   soundInput,
+  themeSelect,
+  highContrastInput,
   statusEl,
   timerEl
 } = elements;
@@ -307,6 +309,16 @@ function bindUi() {
   });
   soundInput.addEventListener("change", () => {
     settings.sound = soundInput.checked;
+    saveSettings();
+  });
+  themeSelect?.addEventListener("change", () => {
+    settings.theme = themeSelect.value;
+    document.documentElement.dataset.theme = settings.theme;
+    saveSettings();
+  });
+  highContrastInput?.addEventListener("change", () => {
+    settings.highContrast = highContrastInput.checked;
+    document.documentElement.dataset.contrast = settings.highContrast ? "high" : "normal";
     saveSettings();
   });
   nameInput.addEventListener("input", () => {

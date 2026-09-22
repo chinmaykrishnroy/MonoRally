@@ -2,7 +2,7 @@ export const W = 1000;
 export const H = 680;
 
 export const config = {
-  appVersion: "1.5.0",
+  appVersion: "1.6.0",
   aiDifficulty: "hard",
   renderDelayMs: 25,
   quickMatchFallbackMs: 5000,
@@ -34,7 +34,9 @@ export const config = {
 
 export const settings = {
   bottomHalfControl: true,
-  sound: true
+  sound: true,
+  theme: "cyan",
+  highContrast: false
 };
 
 export const SETTINGS_KEY = "monorally-settings-v1";

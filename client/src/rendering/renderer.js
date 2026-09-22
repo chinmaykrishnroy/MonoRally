@@ -178,6 +178,18 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
+      const themeInfo = getThemeColors();
+      if (themeInfo.isHighContrast) {
+        ctx.save();
+        ctx.strokeStyle = themeInfo.colors.accent;
+        ctx.lineWidth = Math.max(2, cssPxToCourt(2));
+        ctx.strokeRect(paddleX, paddleY, paddleW, renderedH);
+        ctx.restore();
+      }
+    }
+
+    if (view.status === "running") {
+      drawBallTrails(fg, inverted);
     }
 
     for (const b of view.balls) {
@@ -195,15 +207,22 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     }
 
     const effectNow = performance.now();
+    const { colors: effectColors } = getThemeColors();
     for (let i = state.effects.length - 1; i >= 0; i -= 1) {
       const effect = state.effects[i];
       const progress = clamp((effectNow - effect.createdAt) / effect.duration, 0, 1);
       ctx.globalAlpha = 1 - progress;
-      ctx.strokeStyle = fg;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = effect.highEnergy && !inverted ? effectColors.accent : fg;
+      ctx.lineWidth = effect.highEnergy ? 3 : 2;
       ctx.beginPath();
       ctx.arc(effect.x, effect.y, effect.r + progress * 54, 0, Math.PI * 2);
       ctx.stroke();
+      if (effect.highEnergy) {
+        ctx.globalAlpha = (1 - progress) * 0.45;
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, effect.r + progress * 26, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       drawSpark(effect, progress);
       ctx.globalAlpha = 1;
       if (progress >= 1) state.effects.splice(i, 1);
@@ -212,12 +231,31 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     ctx.restore();
   }
 
+  function getThemeColors() {
+    const root = typeof document !== "undefined" ? document.documentElement : null;
+    const theme = root?.dataset?.theme || "cyan";
+    const isHighContrast = root?.dataset?.contrast === "high";
+    const themeColors = {
+      cyan: { accent: "#00f0ff", glow: "rgba(0, 240, 255, 0.45)", soft: "rgba(0, 240, 255, 0.15)" },
+      amber: { accent: "#ffb700", glow: "rgba(255, 183, 0, 0.45)", soft: "rgba(255, 183, 0, 0.15)" },
+      emerald: { accent: "#00ff88", glow: "rgba(0, 255, 136, 0.45)", soft: "rgba(0, 255, 136, 0.15)" },
+      violet: { accent: "#bf5af2", glow: "rgba(191, 90, 242, 0.45)", soft: "rgba(191, 90, 242, 0.15)" },
+      classic: { accent: "#ffffff", glow: "rgba(255, 255, 255, 0.35)", soft: "rgba(255, 255, 255, 0.12)" }
+    };
+    return {
+      theme,
+      isHighContrast,
+      colors: themeColors[theme] || themeColors.cyan
+    };
+  }
+
   function drawCourtBoundaries(fg, inverted) {
-    const wallWidth = Math.max(2, cssPxToCourt(1.7));
+    const { colors, isHighContrast } = getThemeColors();
+    const wallWidth = Math.max(2, cssPxToCourt(isHighContrast ? 2.5 : 1.7));
     ctx.save();
-    ctx.strokeStyle = fg;
+    ctx.strokeStyle = isHighContrast ? colors.accent : fg;
     ctx.lineWidth = wallWidth;
-    ctx.globalAlpha = inverted ? 0.42 : 0.5;
+    ctx.globalAlpha = isHighContrast ? 0.85 : (inverted ? 0.42 : 0.5);
     ctx.beginPath();
     ctx.moveTo(wallWidth / 2, wallWidth / 2);
     ctx.lineTo(wallWidth / 2, H - wallWidth / 2);
@@ -225,7 +263,7 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     ctx.lineTo(W - wallWidth / 2, H - wallWidth / 2);
     ctx.stroke();
 
-    ctx.globalAlpha = inverted ? 0.18 : 0.24;
+    ctx.globalAlpha = isHighContrast ? 0.45 : (inverted ? 0.18 : 0.24);
     ctx.setLineDash([28, 18]);
     ctx.beginPath();
     ctx.moveTo(0, wallWidth / 2);
@@ -245,8 +283,9 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
       const id = ball.id ?? index;
       const entry = ballTrails.find((trail) => trail.id === id) || { id, points: [] };
       const trail = entry.points;
-      trail.push({ x: ball.x, y: ball.y, r: ball.r });
-      const limit = usesMobileVisuals() ? 6 : 9;
+      const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
+      trail.push({ x: ball.x, y: ball.y, r: ball.r, speed });
+      const limit = usesMobileVisuals() ? 6 : (speed > 520 ? 14 : 9);
       if (trail.length > limit) trail.splice(0, trail.length - limit);
       if (!ballTrails.includes(entry)) ballTrails.push(entry);
     });
@@ -254,16 +293,31 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
 
   function drawBallTrails(fg, inverted) {
     ctx.save();
-    ctx.fillStyle = fg;
+    const { colors } = getThemeColors();
     for (const entry of ballTrails) {
       const trail = entry.points;
+      if (!trail.length) continue;
+      const lastPoint = trail[trail.length - 1];
+      const speed = lastPoint.speed || 0;
+      const isHighSpeed = speed > 480;
+
       trail.forEach((point, index) => {
         const alpha = (index + 1) / Math.max(1, trail.length);
         const r = visualBallRadius(point.r);
-        ctx.globalAlpha = (inverted ? 0.1 : 0.16) * alpha;
+        ctx.save();
+        if (isHighSpeed && !inverted) {
+          ctx.shadowColor = colors.accent;
+          ctx.shadowBlur = Math.min(16, (speed - 420) / 25);
+          ctx.fillStyle = colors.accent;
+          ctx.globalAlpha = Math.min(0.65, 0.28 * alpha * (speed / 520));
+        } else {
+          ctx.fillStyle = fg;
+          ctx.globalAlpha = (inverted ? 0.08 : 0.15) * alpha;
+        }
         ctx.beginPath();
-        ctx.arc(point.x, point.y, r * (0.45 + alpha * 0.35), 0, Math.PI * 2);
+        ctx.arc(point.x, point.y, r * (0.35 + alpha * 0.55), 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       });
     }
     ctx.restore();
@@ -288,15 +342,31 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
   function drawBall(ball, radius, fg, impactDeformation = 0) {
     const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
     const angle = Math.atan2(ball.vy || 1, ball.vx || 0);
-    const speedStretch = clamp((speed - 380) / 5000, 0, 0.1);
-    const stretch = clamp(speedStretch + impactDeformation, -0.24, 0.2);
+    const speedStretch = clamp((speed - 320) / 3200, 0, 0.28);
+    const stretch = clamp(speedStretch + impactDeformation, -0.3, 0.35);
+    const { colors, isHighContrast } = getThemeColors();
+    const isSupersonic = speed > 620;
+
     ctx.save();
     ctx.translate(ball.x, ball.y);
     ctx.rotate(angle);
+
+    if (isSupersonic && !document.body.classList.contains("invert")) {
+      ctx.shadowColor = colors.accent;
+      ctx.shadowBlur = Math.min(18, (speed - 500) / 25);
+    }
+
     ctx.fillStyle = fg;
     ctx.beginPath();
     ctx.ellipse(0, 0, radius * (1 + stretch), radius * (1 - stretch * 0.55), 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isHighContrast) {
+      ctx.strokeStyle = colors.accent;
+      ctx.lineWidth = Math.max(2, cssPxToCourt(2.5));
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 
@@ -318,10 +388,25 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     const presentationAt = state.online && state.clockSynced
       ? localPerformanceForServerTimestamp(lastHit.at)
       : now;
+    const intensity = clamp(Number(lastHit.intensity) || 0.7, 0.35, 1);
     impactEvents.set(slot, {
       at: Number.isFinite(presentationAt) ? presentationAt : now,
-      intensity: clamp(Number(lastHit.intensity) || 0.7, 0.35, 1)
+      intensity
     });
+
+    if (intensity >= 0.85) {
+      const hitX = Number(lastHit.x) || W / 2;
+      const hitY = slot % 2 === 0 ? 36 : H - 36;
+      state.effects.push({
+        x: hitX,
+        y: hitY,
+        r: 12,
+        createdAt: performance.now(),
+        duration: 360,
+        spin: Math.random() * Math.PI * 2,
+        highEnergy: true
+      });
+    }
   }
 
   function registerBallImpacts(balls) {

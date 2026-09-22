@@ -67,6 +67,8 @@ export function collectDom() {
     settingsName: $("settingsName"),
     aiDifficulty: $("aiDifficulty"),
     soundInput: $("soundInput"),
+    themeSelect: $("themeSelect"),
+    highContrastInput: $("highContrastInput"),
     statusEl: $("status"),
     matchResult: $("matchResult"),
     timerEl: $("timer")

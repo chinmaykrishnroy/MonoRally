@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.5.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.5.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.6.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.6.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -137,15 +137,16 @@ kubectl apply -f deploy/k3s/autoscaling.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.5.0`, MonoRally provides enterprise-grade operational resilience and dynamic elasticity:
-- **Worker Draining & Zero-Match-Drop Upgrades**: Simulation workers entering shutdown flag themselves as `draining` in Redis, reject new match allocations, allow ongoing matches to finish cleanly, and terminate gracefully via `terminationGracePeriodSeconds: 120`.
-- **Dynamic Autoscaling (HPA)**: Automatically scales stateless Gateway pods (3 to 50 replicas) and simulation Worker pods (4 to 100 replicas) based on CPU and memory utilization.
-- **High Availability & Disruption Budgets (PDB)**: Enforces minimum available replicas (`minAvailable: 2`) during voluntary Kubernetes node maintenance or upgrades.
-- **Crash Recovery & Stale Lease Pruning**: Ephemeral Redis room leases automatically expire or get purged if a worker encounters an abrupt fault, protecting player state and preventing orphaned locks.
+As of `v1.6.0`, MonoRally delivers a premium visual identity, customizable accent themes, and accessibility modes:
+- **Accent Color Themes**: Choose between Neon Cyan, Solar Amber, Cyber Emerald, Plasma Violet, and Classic Monochrome with instant live preview and persistent client state.
+- **Dynamic Velocity Trails & Supersonic Bloom**: Velocity-scaled ball trails render dynamic tapered blooms when ball speeds exceed 480 px/s.
+- **Squash, Stretch & Impact Shockwaves**: Velocity-directed ball stretching, physical paddle impact squashes, and expanding multi-tier shockwaves on high-intensity smashes.
+- **High-Contrast Accessibility Mode**: High-visibility contrast outlines on paddles, balls, and court boundaries ensuring crisp accessibility in all lighting conditions.
+- **Worker Draining & Dynamic Resilience**: Continued enterprise-grade worker draining, HPA autoscaling (up to 100 worker replicas), and PDB disruption safety from v1.5.0.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.5.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.6.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 

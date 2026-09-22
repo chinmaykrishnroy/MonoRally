@@ -12,9 +12,9 @@ This document outlines the architectural and product milestones transitioning Mo
 | **v1.2.7** | Complete | Fairness & Critical Stability Patch | Swept continuous collision detection, jitter-proof input sequencing, error UI |
 | **v1.3.0** | Complete | Distributed Data Foundation | PostgreSQL, Redis, database migrations, repository layer, zero local file persistence |
 | **v1.4.0** | Complete | Distributed Realtime Multiplayer | Gateway, Match Worker, Matchmaker, NATS Core bus, distributed room ownership |
-| **v1.5.0** | Current Release | Resilience & Autoscaling | Worker draining, zero-downtime rolling updates, K8s HPA/PDB, failure injection |
-| **v1.6.0** | Planned | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |
-| **v1.7.0** | Planned | Distinctive Gameplay Identity | Signature skill shots (curve, counter, smash, drive), tactical powerup plays |
+| **v1.5.0** | Complete | Resilience & Autoscaling | Worker draining, zero-downtime rolling updates, K8s HPA/PDB, failure injection |
+| **v1.6.0** | Current Release | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |
+| **v1.7.0** | Next Milestone | Distinctive Gameplay Identity | Signature skill shots (curve, counter, smash, drive), tactical powerup plays |
 | **v1.8.0** | Planned | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests |
 | **v1.9.0** | Planned | Social Multiplayer & Population Loop | Background human matchmaking during AI warmup, mutual rematches, invites |
 | **v1.10.0** | Planned | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.6.0] - 2026-09-23
+
+### Highlights
+- Customizable Accent Color Themes: Instant in-game theme switching between Neon Cyan, Solar Amber, Cyber Emerald, Plasma Violet, and Classic Monochrome.
+- High-Contrast Accessibility Mode: Full WCAG-conscious high-contrast mode with prominent 2px-3px dynamic boundary strokes on paddles, balls, and court boundaries.
+- Dynamic Velocity Trails & Supersonic Bloom: Ball trails dynamically scale their length and taper with ball velocity; balls traveling over 480 px/s render a supersonic glowing accent bloom.
+- Squash, Stretch & Impact Shockwaves: Velocity-directed elliptical ball stretching and physical paddle impact deformation, accompanied by multi-tier expanding shockwave rings on smashes.
+- Interactive Live Preview & Client Persistence: Selected theme and accessibility preferences immediately apply to DOM datasets and persist across page refreshes.
+
+### Added
+- `theme` and `highContrast` properties in client settings state (`client/src/core/shared.js`).
+- Accent theme and high-contrast accessibility controls in the settings modal (`client/public/index.html`).
+- Theme custom properties and high-contrast styles in `client/public/styles.css`.
+- Dynamic ball trail rendering with velocity blooms and theme integration in `client/src/rendering/renderer.js`.
+- Ball squash & stretch physics deformation along velocity angle in `client/src/rendering/renderer.js`.
+- Multi-tier expanding shockwave rings on high-velocity impacts in `client/src/rendering/renderer.js`.
+- Unit test suite for settings UI, theme, and contrast persistence in `tests/unit/settings-ui.test.js`.
+- End-to-end Playwright tests verifying settings modal theme selection, contrast mode, and refresh persistence across multiple browser viewports.
+
+### Changed
+- `drawBallTrails` is now actively integrated into the main canvas rendering pipeline prior to ball rendering.
+- Court boundaries render enhanced high-visibility borders when accessibility contrast mode is active.
+
 ## [v1.5.0] - 2026-09-23
 
 ### Highlights

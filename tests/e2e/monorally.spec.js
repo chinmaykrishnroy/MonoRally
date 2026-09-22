@@ -240,6 +240,25 @@ test("player name and match size survive a refresh", async ({ page }) => {
   await expect(page.getByRole("button", { name: "2 versus 2" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("theme and high-contrast accessibility mode survive a refresh", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#settingsBtn").click();
+  await expect(page.locator("#settingsModal")).toBeVisible();
+  await page.locator("#themeSelect").selectOption("amber");
+  await page.locator("#highContrastInput").check();
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "amber");
+  await expect(page.locator("html")).toHaveAttribute("data-contrast", "high");
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "amber");
+  await expect(page.locator("html")).toHaveAttribute("data-contrast", "high");
+
+  await page.locator("#settingsBtn").click();
+  await expect(page.locator("#themeSelect")).toHaveValue("amber");
+  await expect(page.locator("#highContrastInput")).toBeChecked();
+});
+
 test("iPhone can start and reconnect to a quick match", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "iPhone 16", "iPhone touch and reconnect contract");
   await openModeStep(page);

@@ -4,6 +4,7 @@ export function createSettingsUi({ elements, state }) {
   const {
     aiDifficulty,
     bottomControlInput,
+    highContrastInput,
     infoModal,
     nameInput,
     overlay,
@@ -13,7 +14,8 @@ export function createSettingsUi({ elements, state }) {
     renderDelayInput,
     settingsModal,
     settingsName,
-    soundInput
+    soundInput,
+    themeSelect
   } = elements;
 
   async function loadConfig() {
@@ -37,10 +39,20 @@ export function createSettingsUi({ elements, state }) {
       if (["easy", "medium", "hard", "insane"].includes(saved.aiDifficulty)) config.aiDifficulty = saved.aiDifficulty;
       if (typeof saved.bottomHalfControl === "boolean") settings.bottomHalfControl = saved.bottomHalfControl;
       if (typeof saved.sound === "boolean") settings.sound = saved.sound;
+      if (["cyan", "amber", "emerald", "violet", "classic"].includes(saved.theme)) settings.theme = saved.theme;
+      if (typeof saved.highContrast === "boolean") settings.highContrast = saved.highContrast;
     } catch {
       // Corrupt local settings should never block play.
     }
+    applyThemeAndContrast();
     syncSettingsControls();
+  }
+
+  function applyThemeAndContrast() {
+    if (typeof document !== "undefined" && document.documentElement) {
+      document.documentElement.dataset.theme = settings.theme || "cyan";
+      document.documentElement.dataset.contrast = settings.highContrast ? "high" : "normal";
+    }
   }
 
   function saveSettings() {
@@ -49,9 +61,12 @@ export function createSettingsUi({ elements, state }) {
       matchMode: state.quickMode,
       aiDifficulty: config.aiDifficulty,
       bottomHalfControl: settings.bottomHalfControl,
-      sound: settings.sound
+      sound: settings.sound,
+      theme: settings.theme,
+      highContrast: settings.highContrast
     };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
+    applyThemeAndContrast();
     syncSettingsControls();
   }
 
@@ -61,6 +76,8 @@ export function createSettingsUi({ elements, state }) {
     renderDelayInput.value = String(state.renderDelay || config.renderDelayMs || 25);
     bottomControlInput.checked = settings.bottomHalfControl;
     soundInput.checked = settings.sound;
+    if (themeSelect) themeSelect.value = settings.theme || "cyan";
+    if (highContrastInput) highContrastInput.checked = Boolean(settings.highContrast);
   }
 
   function ensureHandle() {
