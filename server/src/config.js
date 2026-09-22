@@ -1,4 +1,4 @@
-import { envNumber, envText } from "./env.js";
+import { envBoolean, envNumber, envText } from "./env.js";
 
 export const W = 1000;
 export const H = 680;
@@ -6,6 +6,7 @@ export const PHYSICS_HZ = envNumber("PHYSICS_HZ", 60, 30, 240);
 export const NETWORK_HZ = envNumber("NETWORK_HZ", 30, 10, 60);
 export const PORT = envNumber("PORT", 8787, 1024, 65535);
 export const LEADERBOARD_FILE = process.env.LEADERBOARD_FILE || "./data/leaderboard.json";
+export const DEBUG_NETWORK_TELEMETRY = envBoolean("DEBUG_NETWORK_TELEMETRY", false);
 export const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS ||
   `http://localhost:${PORT},http://127.0.0.1:${PORT},https://mono.prefect-sys.online`)
   .split(",")
@@ -54,7 +55,7 @@ export const INPUT_PACKET = 1;
 
 export function publicConfig() {
   return {
-    appVersion: process.env.APP_VERSION || "1.2.6",
+    appVersion: process.env.APP_VERSION || "1.2.7",
     aiDifficulty: envText("AI_DIFFICULTY", "hard", ["easy", "medium", "hard", "insane"]),
     renderDelayMs: envNumber("RENDER_DELAY_MS", 25, 0, 100),
     quickMatchFallbackMs: QUICK_MATCH_FALLBACK_MS,

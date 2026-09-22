@@ -39,7 +39,7 @@ export function createLeaderboardUi(roots) {
 }
 
 function renderError(root) {
-  root.innerHTML = '<p class="leaderboardEmpty">Records unavailable</p>';
+  root.innerHTML = '<p class="leaderboardEmpty leaderboardError" role="alert">Leaderboard unavailable</p>';
 }
 
 function formatTime(totalSeconds) {

@@ -272,6 +272,10 @@ h1 {
   padding-inline: 8px;
 }
 
+.leaderboardEmpty.leaderboardError {
+  color: #ef4444;
+}
+
 @media (max-width: 460px) {
   .leaderboardBoards {
     grid-template-columns: 1fr;

@@ -1,6 +1,7 @@
 import { clamp } from "./utils.js";
 
 const TIMESTAMP_MODULO = 0x100000000;
+const SEQUENCE_MODULO = 0x10000;
 
 export function epochNow() {
   return performance.timeOrigin + performance.now();
@@ -23,6 +24,16 @@ export function normalizeInputTime(encoded, now, historyMs, futureToleranceMs) {
   if (!Number.isInteger(encoded) || encoded === 0) return now;
   const eventEpoch = expandTimestamp32(encoded, performance.timeOrigin + now);
   return clamp(eventEpoch - performance.timeOrigin, now - historyMs, now + futureToleranceMs);
+}
+
+export function classifyInputSequence(lastSequence, sequence) {
+  if (!Number.isInteger(sequence)) return { duplicate: false, historical: false, live: true, normalized: null };
+  const normalized = sequence & 0xffff;
+  if (!Number.isInteger(lastSequence)) return { duplicate: false, historical: false, live: true, normalized };
+  const distance = (normalized - lastSequence + SEQUENCE_MODULO) & 0xffff;
+  if (distance === 0) return { duplicate: true, historical: false, live: false, normalized };
+  if (distance < SEQUENCE_MODULO / 2) return { duplicate: false, historical: false, live: true, normalized };
+  return { duplicate: false, historical: true, live: false, normalized };
 }
 
 export function seedInputTimeline(player, at) {

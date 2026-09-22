@@ -16,6 +16,7 @@ export function createRoomLifecycle(rooms) {
     return {
       code: uniqueCode(),
       quick,
+      quickTimer: null,
       visibility,
       mode,
       maxPlayers: mode === "2v2" ? 4 : 2,
@@ -37,7 +38,10 @@ export function createRoomLifecycle(rooms) {
       pendingCountdown: false,
       lastMissTeam: null,
       winner: null,
-      leaderboardRecorded: false
+      endedAt: 0,
+      leaderboardRecorded: false,
+      lifecycleVersion: 0,
+      replayStarting: false
     };
   }
 
@@ -49,18 +53,23 @@ export function createRoomLifecycle(rooms) {
   }
 
   function startRoom(room) {
+    if (room.quickTimer) clearTimeout(room.quickTimer);
+    room.quickTimer = null;
+    room.lifecycleVersion += 1;
     room.status = "running";
     room.startedAt = performance.now();
     room.lastTick = room.startedAt;
     room.misses = { top: 0, bottom: 0 };
     room.returns = { top: 0, bottom: 0 };
     room.winner = null;
+    room.endedAt = 0;
     room.leaderboardRecorded = false;
     room.power = null;
     room.lastHit = null;
     room.lastPower = null;
     room.pendingCountdown = false;
     room.lastMissTeam = null;
+    room.replayStarting = false;
     resetPlayers(room);
     room.balls = [];
     room.nextBallId = 1;

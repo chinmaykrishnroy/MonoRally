@@ -20,7 +20,8 @@ import {
 import { createBroadcasters } from "./broadcasting.js";
 import { attachWebSocketServer } from "./connection.js";
 import { createHttpServer } from "./http.js";
-import { epochNow, normalizeInputTime, recordInputSample } from "./input-timeline.js";
+import { classifyInputSequence, epochNow, normalizeInputTime, recordInputSample } from "./input-timeline.js";
+import { emitNetworkTelemetry } from "./network-telemetry.js";
 import { createLeaderboard } from "./leaderboard.js";
 import {
   advanceBalls,
@@ -87,6 +88,7 @@ function shutdown() {
   clearInterval(physicsTimer);
   clearInterval(directoryTimer);
   clearInterval(heartbeatTimer);
+  for (const room of rooms.values()) clearRoomTimer(room);
   for (const client of clients.values()) client.socket.destroy();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 4000).unref();
@@ -141,46 +143,53 @@ function handleBinaryMessage(client, data) {
 }
 
 function updateClientInput(client, x, sequence = null, encodedServerTime = null, observedX = null, observedVx = null, timestampTrusted = false) {
-  if (!acceptInputSequence(client, sequence)) return;
   if (!allowClientInput(client)) return;
+  const sequenceState = classifyInputSequence(client.lastInputSequence, sequence);
+  if (sequenceState.duplicate) return;
+  if (sequenceState.historical && !timestampTrusted) return;
   const now = performance.now();
-  client.inputX = clamp(x, 0, 1);
+  const normalizedInput = clamp(x, 0, 1);
+  if (sequenceState.live) {
+    client.inputX = normalizedInput;
+    if (Number.isInteger(sequenceState.normalized)) client.lastInputSequence = sequenceState.normalized;
+  }
   if (client.room) {
     const player = client.room.players.find((p) => p.clientId === client.id);
     if (player) {
-      player.targetX = client.inputX * W;
-      player.lastInputAt = now;
+      if (sequenceState.live) {
+        player.targetX = client.inputX * W;
+        player.lastInputAt = now;
+      }
       const eventAt = normalizeInputTime(timestampTrusted ? encodedServerTime : null, now, INPUT_HISTORY_MS, INPUT_FUTURE_TOLERANCE_MS);
       const sampleDelay = clamp(now - eventAt, 0, INPUT_HISTORY_MS);
-      if (timestampTrusted && Number.isFinite(player.inputDelayMs)) {
+      if (timestampTrusted && sequenceState.live && Number.isFinite(player.inputDelayMs)) {
         const deviation = Math.abs(sampleDelay - player.inputDelayMs);
         player.inputDelayMs += (sampleDelay - player.inputDelayMs) * 0.12;
         player.inputJitterMs = (Number(player.inputJitterMs) || 0) * 0.82 + deviation * 0.18;
-      } else if (timestampTrusted) {
+      } else if (timestampTrusted && sequenceState.live) {
         player.inputDelayMs = sampleDelay;
         player.inputJitterMs = 0;
       }
+      if (sequenceState.live) player.clockTrusted = timestampTrusted;
       recordInputSample(
         player,
-        { x: player.targetX, observedX, observedVx, eventAt, receivedAt: now, sequence },
+        { x: normalizedInput * W, observedX, observedVx, eventAt, receivedAt: now, sequence: sequenceState.normalized },
         { acceleration: PADDLE_ACCELERATION, historyMs: INPUT_HISTORY_MS, maxSpeed: PADDLE_MAX_SPEED, now }
       );
-      player.lastProcessedInputSequence = sequence;
+      if (sequenceState.live) player.lastProcessedInputSequence = sequenceState.normalized;
+      if (sequenceState.historical) {
+        emitNetworkTelemetry("input.reordered", {
+          room: client.room.code,
+          slot: player.slot,
+          sequence: sequenceState.normalized,
+          latestSequence: client.lastInputSequence,
+          eventAt,
+          receivedAt: now,
+          delayMs: sampleDelay
+        });
+      }
     }
   }
-}
-
-function acceptInputSequence(client, sequence) {
-  if (!Number.isInteger(sequence)) return true;
-  const normalized = sequence & 0xffff;
-  if (!Number.isInteger(client.lastInputSequence)) {
-    client.lastInputSequence = normalized;
-    return true;
-  }
-  const distance = (normalized - client.lastInputSequence + 0x10000) & 0xffff;
-  if (distance === 0 || distance >= 0x8000) return false;
-  client.lastInputSequence = normalized;
-  return true;
 }
 
 function allowClientInput(client) {
@@ -207,7 +216,7 @@ function joinQuick(client, mode = "1v1") {
     room.quickAiDifficulty = QUICK_AI_DIFFICULTY;
     room.quickDeadline = performance.now() + QUICK_MATCH_FALLBACK_MS;
     rooms.set(room.code, room);
-    setTimeout(() => startQuickRoom(room), QUICK_MATCH_FALLBACK_MS);
+    room.quickTimer = setTimeout(() => startQuickRoom(room), QUICK_MATCH_FALLBACK_MS);
   }
   send(client, { t: "quickWait", mode });
   if (!addQuickPlayer(room, client)) {
@@ -243,6 +252,7 @@ function addQuickPlayer(room, client) {
 
 function startQuickRoom(room) {
   if (!room || room.status !== "waiting" || !rooms.has(room.code)) return;
+  clearRoomTimer(room);
   if (!room.players.length) {
     rooms.delete(room.code);
     broadcastRooms();
@@ -260,6 +270,7 @@ function startQuickRoom(room) {
   }
   publishState(room, performance.now(), true);
   broadcastRooms();
+  room.replayStarting = false;
 }
 
 function slotAssignment(mode, slot) {
@@ -380,9 +391,14 @@ function replayRoom(client) {
     send(client, { t: "error", message: "Replay is unavailable because a player left" });
     return;
   }
+  if (room.replayStarting) return;
+  room.replayStarting = true;
   startRoom(room);
   const recipients = [...room.players.map((p) => clients.get(p.clientId)).filter(Boolean), ...room.spectators];
   broadcast(recipients, { t: "replayStarted", code: room.code, mode: room.mode });
+  publishState(room, performance.now(), true);
+  broadcastRooms();
+  room.replayStarting = false;
 }
 
 function addPlayer(room, client, assignment = null) {
@@ -640,4 +656,10 @@ function tickRoom(room) {
     room.lastMissTeam = null;
   }
   publishState(room, now);
+}
+
+function clearRoomTimer(room) {
+  if (!room?.quickTimer) return;
+  clearTimeout(room.quickTimer);
+  room.quickTimer = null;
 }

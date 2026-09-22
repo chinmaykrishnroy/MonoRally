@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { inputSampleAt, projectInputSample, recordInputSample } from "../../server/src/input-timeline.js";
+import { classifyInputSequence, inputSampleAt, projectInputSample, recordInputSample } from "../../server/src/input-timeline.js";
 
 describe("timestamped paddle input", () => {
   test("selects the last sample that existed at collision time", () => {
@@ -55,5 +55,19 @@ describe("timestamped paddle input", () => {
     const projected = projectInputSample({ x: 200, rawX: 260, eventAt: 100, vx: 600 }, 300, 4200, 30000);
 
     expect(projected.x).toBe(260);
+  });
+
+  test("classifies live, duplicate, historical, and wrapped input sequences", () => {
+    expect(classifyInputSequence(null, null)).toEqual({ duplicate: false, historical: false, live: true, normalized: null });
+    expect(classifyInputSequence(null, 42)).toEqual({ duplicate: false, historical: false, live: true, normalized: 42 });
+
+    expect(classifyInputSequence(42, 43)).toEqual({ duplicate: false, historical: false, live: true, normalized: 43 });
+    expect(classifyInputSequence(42, 42)).toEqual({ duplicate: true, historical: false, live: false, normalized: 42 });
+    expect(classifyInputSequence(42, 41)).toEqual({ duplicate: false, historical: true, live: false, normalized: 41 });
+
+    // 16-bit wrapping: 65535 -> 0 is live next packet
+    expect(classifyInputSequence(0xffff, 0)).toEqual({ duplicate: false, historical: false, live: true, normalized: 0 });
+    // 16-bit historical across wrap: current is 2, arrival is 65534
+    expect(classifyInputSequence(2, 0xfffe)).toEqual({ duplicate: false, historical: true, live: false, normalized: 0xfffe });
   });
 });

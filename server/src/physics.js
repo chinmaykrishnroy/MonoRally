@@ -23,6 +23,7 @@ import {
   W
 } from "./config.js";
 import { inputSampleAt, projectInputSample } from "./input-timeline.js";
+import { emitNetworkTelemetry } from "./network-telemetry.js";
 import { clamp, playerKey, rand, reflectX } from "./utils.js";
 
 const PADDLE_HEIGHT = 18;
@@ -340,33 +341,73 @@ function sweptPaddleContact(ball, team, width, centerAt) {
   const paddleY = team === "top" ? 28 : H - 28;
   const capRadius = PADDLE_HEIGHT / 2 + ball.r;
   const straightHalf = Math.max(0, width / 2 - PADDLE_HEIGHT / 2 + PADDLE_EDGE_GRACE);
-  const intersects = (t) => {
-    const relativeX = oldX + (ball.x - oldX) * t - centerAt(t);
-    const relativeY = oldY + (ball.y - oldY) * t - paddleY;
-    const edgeX = Math.max(0, Math.abs(relativeX) - straightHalf);
-    return edgeX * edgeX + relativeY * relativeY <= capRadius * capRadius;
+  const relativeStartX = oldX - centerAt(0);
+  const relativeEndX = ball.x - centerAt(1);
+  const relativeStartY = oldY - paddleY;
+  const relativeEndY = ball.y - paddleY;
+  const t = segmentCapsuleHitT(
+    relativeStartX,
+    relativeStartY,
+    relativeEndX,
+    relativeEndY,
+    straightHalf,
+    capRadius
+  );
+  if (t == null) return null;
+  return {
+    t,
+    hitX: clamp(oldX + (ball.x - oldX) * t, ball.r, W - ball.r),
+    hitY: oldY + (ball.y - oldY) * t
   };
-  let previousT = 0;
-  if (intersects(previousT)) return { t: 0, hitX: oldX, hitY: oldY };
-  for (let step = 1; step <= 16; step += 1) {
-    const t = step / 16;
-    if (!intersects(t)) {
-      previousT = t;
+}
+
+function segmentCapsuleHitT(x0, y0, x1, y1, halfLength, radius) {
+  const edgeX = Math.max(0, Math.abs(x0) - halfLength);
+  if (edgeX * edgeX + y0 * y0 <= radius * radius) return 0;
+
+  const candidates = [];
+  const rectangleHit = segmentAabbHitT(x0, y0, x1, y1, -halfLength, halfLength, -radius, radius);
+  if (rectangleHit != null) candidates.push(rectangleHit);
+  const leftHit = segmentCircleHitT(x0, y0, x1, y1, -halfLength, 0, radius);
+  if (leftHit != null) candidates.push(leftHit);
+  const rightHit = segmentCircleHitT(x0, y0, x1, y1, halfLength, 0, radius);
+  if (rightHit != null) candidates.push(rightHit);
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
+function segmentAabbHitT(x0, y0, x1, y1, minX, maxX, minY, maxY) {
+  let enter = 0;
+  let exit = 1;
+  for (const [start, delta, min, max] of [[x0, x1 - x0, minX, maxX], [y0, y1 - y0, minY, maxY]]) {
+    if (Math.abs(delta) < 1e-9) {
+      if (start < min || start > max) return null;
       continue;
     }
-    let low = previousT;
-    let high = t;
-    for (let iteration = 0; iteration < 8; iteration += 1) {
-      const mid = (low + high) / 2;
-      if (intersects(mid)) high = mid;
-      else low = mid;
-    }
-    return {
-      t: high,
-      hitX: clamp(oldX + (ball.x - oldX) * high, ball.r, W - ball.r),
-      hitY: oldY + (ball.y - oldY) * high
-    };
+    const first = (min - start) / delta;
+    const second = (max - start) / delta;
+    enter = Math.max(enter, Math.min(first, second));
+    exit = Math.min(exit, Math.max(first, second));
+    if (enter > exit) return null;
   }
+  return enter >= 0 && enter <= 1 ? enter : null;
+}
+
+function segmentCircleHitT(x0, y0, x1, y1, centerX, centerY, radius) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const ox = x0 - centerX;
+  const oy = y0 - centerY;
+  const a = dx * dx + dy * dy;
+  if (a < 1e-12) return null;
+  const b = 2 * (ox * dx + oy * dy);
+  const c = ox * ox + oy * oy - radius * radius;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const first = (-b - root) / (2 * a);
+  const second = (-b + root) / (2 * a);
+  if (first >= 0 && first <= 1) return first;
+  if (second >= 0 && second <= 1) return second;
   return null;
 }
 
@@ -408,6 +449,7 @@ function queuePendingMiss(room, ball, crossing, now) {
     points: crossing.points
   };
   ball.paddleApproach = null;
+  emitNetworkTelemetry("collision.pending", () => collisionTelemetry(room, ball, ball.pendingMiss, now));
 }
 
 function inputDecisionDelay(room, team) {
@@ -465,6 +507,13 @@ function resolvePendingMiss(room, ball, now) {
 
   if (catches.length) {
     const caught = catches.sort((a, b) => a.distance - b.distance || a.contactAt - b.contactAt)[0];
+    emitNetworkTelemetry("collision.adjudicated", () => ({
+      ...collisionTelemetry(room, ball, pending, now),
+      outcome: "hit",
+      lateInput: true,
+      resolvedSlot: caught.player.slot,
+      reconstructed: { x: caught.center, vx: caught.vx, contactAt: caught.contactAt, distance: caught.distance }
+    }));
     applyPaddleBounce(
       room,
       caught.player,
@@ -479,7 +528,43 @@ function resolvePendingMiss(room, ball, now) {
     return;
   }
 
+  emitNetworkTelemetry("collision.adjudicated", () => ({
+    ...collisionTelemetry(room, ball, pending, now),
+    outcome: "miss",
+    lateInput: false
+  }));
   finalizeMiss(room, pending.team, ball, now);
+}
+
+function collisionTelemetry(room, ball, pending, now) {
+  return {
+    room: room.code,
+    ball: ball.id,
+    team: pending.team,
+    collisionTimestamp: pending.crossedAt,
+    decisionTimestamp: now,
+    pendingMiss: {
+      hitX: pending.hitX,
+      contactY: pending.contactY,
+      resolveAt: pending.resolveAt
+    },
+    ballApproach: (pending.points || []).slice(-16).map((point) => ({ x: point.x, y: point.y, at: point.at })),
+    paddles: room.players
+      .filter((player) => player.team === pending.team && !player.bot)
+      .map((player) => ({
+        slot: player.slot,
+        clockTrusted: Boolean(player.clockTrusted),
+        estimatedRttMs: Number.isFinite(player.inputDelayMs) ? player.inputDelayMs * 2 : null,
+        jitterMs: Number.isFinite(player.inputJitterMs) ? player.inputJitterMs : null,
+        history: (player.inputHistory || []).slice(-16).map((sample) => ({
+          sequence: sample.sequence,
+          eventAt: sample.eventAt,
+          receivedAt: sample.receivedAt,
+          x: sample.x,
+          vx: sample.vx
+        }))
+      }))
+  };
 }
 
 function pendingSweepPoints(pending) {

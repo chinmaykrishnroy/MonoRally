@@ -1,30 +1,67 @@
 export function createNetwork({ handleServer, helloMessage, nameForSlot, onClose, onConnecting, onOpen, onProtocolError, parseBinaryStatePacket, state }) {
+  let reconnectTimer = 0;
+  let generation = 0;
+
   function connect() {
     if (state.connecting || state.ws?.readyState === WebSocket.OPEN || state.ws?.readyState === WebSocket.CONNECTING) return;
+    clearReconnectTimer();
     state.connecting = true;
     onConnecting?.();
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    state.ws = new WebSocket(`${proto}://${location.host}`);
-    state.ws.binaryType = "arraybuffer";
-    state.ws.addEventListener("open", () => {
+    const socketGeneration = ++generation;
+    let socket;
+    try {
+      socket = new WebSocket(`${proto}://${location.host}`);
+    } catch (error) {
+      state.connecting = false;
+      onProtocolError?.(error);
+      scheduleReconnect(socketGeneration);
+      return;
+    }
+    state.ws = socket;
+    socket.binaryType = "arraybuffer";
+    socket.addEventListener("open", () => {
+      if (!isCurrent(socket, socketGeneration)) return;
+      clearReconnectTimer();
       state.connecting = false;
       send(helloMessage());
       send({ t: "rooms" });
       onOpen?.();
       flushPending();
     });
-    state.ws.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (!isCurrent(socket, socketGeneration)) return;
       handleSocketMessage(event).catch(onProtocolError);
     });
-    state.ws.addEventListener("close", () => {
+    socket.addEventListener("close", () => {
+      if (!isCurrent(socket, socketGeneration)) return;
       state.connecting = false;
       onClose?.();
       if (state.sessionMoved) return;
-      setTimeout(connect, 900);
+      scheduleReconnect(socketGeneration);
     });
-    state.ws.addEventListener("error", () => {
-      state.connecting = false;
+    socket.addEventListener("error", () => {
+      if (!isCurrent(socket, socketGeneration)) return;
+      state.connecting = socket.readyState === WebSocket.CONNECTING;
     });
+  }
+
+  function isCurrent(socket, socketGeneration) {
+    return state.ws === socket && generation === socketGeneration;
+  }
+
+  function scheduleReconnect(socketGeneration) {
+    if (state.sessionMoved || reconnectTimer || socketGeneration !== generation) return;
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = 0;
+      connect();
+    }, 900);
+  }
+
+  function clearReconnectTimer() {
+    if (!reconnectTimer) return;
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = 0;
   }
 
   async function handleSocketMessage(event) {

@@ -37,12 +37,12 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
 
   function publicRoomRecords() {
     return [...rooms.values()]
-      .filter((room) => room.visibility === "public")
+      .filter((room) => room.visibility === "public" && (room.status === "waiting" || room.status === "running"))
       .map((room) => ({
         code: room.code,
         mode: room.mode,
         status: room.status,
-        players: room.players.length,
+        players: room.players.filter((player) => !player.disconnected).length,
         maxPlayers: room.maxPlayers,
         spectators: room.spectators.length,
         joinable: room.status === "waiting" && room.players.length < room.maxPlayers
@@ -56,7 +56,7 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
   function publicRoomPage({ offset = 0, status = "waiting" } = {}) {
     const normalizedStatus = status === "live" ? "live" : "waiting";
     const start = Math.max(0, Number(offset) || 0);
-    const matching = publicRoomRecords().filter((room) => (normalizedStatus === "waiting" ? room.status === "waiting" : room.status !== "waiting"));
+    const matching = publicRoomRecords().filter((room) => (normalizedStatus === "waiting" ? room.status === "waiting" : room.status === "running"));
     const page = matching.slice(start, start + PUBLIC_ROOM_PAGE_SIZE);
     const nextOffset = start + page.length;
     return {
@@ -85,11 +85,18 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
         publishState(room, now, true);
       }
       if (room.quick && !room.spectators.length && !room.players.some((player) => player.clientId || player.disconnected)) {
+        if (room.quickTimer) clearTimeout(room.quickTimer);
         rooms.delete(code);
         continue;
       }
-      if (!room.players.length && !room.spectators.length) rooms.delete(code);
-      if (room.quick && room.status === "ended" && now - room.lastTick > 15000) rooms.delete(code);
+      if (!room.players.length && !room.spectators.length) {
+        if (room.quickTimer) clearTimeout(room.quickTimer);
+        rooms.delete(code);
+      }
+      if (room.quick && room.status === "ended" && now - room.lastTick > 15000) {
+        if (room.quickTimer) clearTimeout(room.quickTimer);
+        rooms.delete(code);
+      }
     }
   }
 

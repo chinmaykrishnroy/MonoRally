@@ -93,7 +93,13 @@ export function handleFrames(client, chunk, { onBinary, onMessage, onError }) {
 
 function dispatchMessage(client, opcode, data, { onBinary, onMessage, onError }) {
   if (opcode === 2) {
-    onBinary(client, data);
+    try {
+      onBinary(client, data);
+    } catch (error) {
+      const errorId = `SERVER-BIN-${Date.now().toString(36).toUpperCase()}`;
+      console.error(`[${errorId}]`, error);
+      onError(client, "Malformed binary packet", { errorId, fatal: false });
+    }
     return;
   }
   let message;

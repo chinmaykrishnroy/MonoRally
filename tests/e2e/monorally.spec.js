@@ -79,6 +79,18 @@ test("home renders ten scrollable rankers for both match sizes", async ({ page }
   expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight);
 });
 
+test("home renders explicit error state when leaderboard fetch fails", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "single leaderboard error contract");
+  await page.route("**/leaderboard.json", (route) => route.fulfill({ status: 500, body: "Server Error" }));
+  await page.goto("/");
+
+  const one = page.locator("#leaderboard1v1");
+  const two = page.locator("#leaderboard2v2");
+  await expect(one.locator(".leaderboardError")).toHaveText("Leaderboard unavailable");
+  await expect(two.locator(".leaderboardError")).toHaveText("Leaderboard unavailable");
+  await expect(one.locator(".leaderboardError")).toHaveAttribute("role", "alert");
+});
+
 test("unexpected client errors show sanitized issue details", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "single global-error contract");
   await page.goto("/");

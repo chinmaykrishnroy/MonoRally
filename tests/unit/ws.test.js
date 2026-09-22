@@ -57,4 +57,25 @@ describe("websocket frame parser", () => {
     expect(onMessage).toHaveBeenCalledWith(client, { t: "createRoom", mode: "1v1" });
     expect(handlers.onError).not.toHaveBeenCalled();
   });
+
+  test("catches binary frame handler exceptions and notifies client", () => {
+    const client = { buffer: Buffer.alloc(0), socket: { destroyed: false, write: vi.fn(), end: vi.fn() } };
+    const onError = vi.fn();
+    const onBinary = vi.fn().mockImplementation(() => {
+      throw new Error("corrupted payload");
+    });
+
+    handleFrames(client, maskedFrame(Buffer.from([0x01, 0x02]), { fin: true, opcode: 2 }), {
+      onBinary,
+      onError,
+      onMessage: vi.fn()
+    });
+
+    expect(onBinary).toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(
+      client,
+      "Malformed binary packet",
+      expect.objectContaining({ errorId: expect.stringMatching(/^SERVER-BIN-/), fatal: false })
+    );
+  });
 });
