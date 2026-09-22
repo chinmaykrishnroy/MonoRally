@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.2.7
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.2.7
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.3.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.3.0
 ```
 
 For K3s, apply the version-pinned example after the GitHub Release workflow completes:
@@ -125,11 +125,11 @@ kubectl apply -f deploy/k3s/monorally.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-Leaderboard records are written to `LEADERBOARD_FILE`. Docker Compose mounts `/data` in the `monorally_data` named volume, so rebuilding or replacing the container keeps the records. Mount a PersistentVolumeClaim at `/data` when deploying to K3s.
+As of `v1.3.0`, MonoRally pods are completely stateless and support zero-downtime rolling updates. Durable state (players, match histories, leaderboards) is stored in PostgreSQL, and ephemeral state (sessions, presence, rate limits, leaderboard caches) is backed by Redis. Production containers no longer require local PersistentVolumeClaims. Health probes are served at `/health/live` (liveness) and `/health/ready` (readiness with DB & Redis validation).
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.2.7` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.3.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 
@@ -138,6 +138,9 @@ Common options:
 ```env
 APP_HOST_PORT=18787
 PORT=8787
+DATA_BACKEND=postgres
+DATABASE_URL=postgresql://postgres:postgres@postgres:5432/monorally
+REDIS_URL=redis://redis:6379
 CORS_ORIGINS=http://localhost:18787,http://127.0.0.1:18787,http://192.168.0.5:18787,https://mono.prefect-sys.online
 
 PHYSICS_HZ=60
@@ -149,7 +152,6 @@ INPUT_HISTORY_MS=500
 LATE_INPUT_GRACE_MS=220
 CLOCK_SYNC_INTERVAL_MS=5000
 HIT_PRESENTATION_DELAY_MS=90
-LEADERBOARD_FILE=/data/leaderboard.json
 PADDLE_MAX_SPEED=4200
 PADDLE_ACCELERATION=30000
 PADDLE_VELOCITY_TRANSFER=0.34

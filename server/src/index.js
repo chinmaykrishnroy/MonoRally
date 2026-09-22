@@ -1,6 +1,8 @@
 import {
   ALLOWED_ORIGINS,
   CLIENT_TIMEOUT_MS,
+  DATABASE_URL,
+  DATA_BACKEND,
   HEARTBEAT_MS,
   H,
   INPUT_HISTORY_MS,
@@ -14,9 +16,19 @@ import {
   PADDLE_MAX_SPEED,
   QUICK_AI_DIFFICULTY,
   QUICK_MATCH_FALLBACK_MS,
+  REDIS_URL,
   TICK,
   W
 } from "./config.js";
+import { checkDatabaseHealth, closeDatabasePool, createDatabasePool } from "./db/pool.js";
+import { runMigrations } from "./db/migrator.js";
+import { checkRedisHealth, closeRedisClient, createRedisClient } from "./redis/client.js";
+import { createSessionStore } from "./redis/session-store.js";
+import { createPresenceStore } from "./redis/presence-store.js";
+import { createDistributedRateLimiter } from "./redis/rate-limiter.js";
+import { createLeaderboardRepository } from "./repositories/leaderboard-repository.js";
+import { createPlayerRepository } from "./repositories/player-repository.js";
+import { createMatchRepository } from "./repositories/match-repository.js";
 import { createBroadcasters } from "./broadcasting.js";
 import { attachWebSocketServer } from "./connection.js";
 import { createHttpServer } from "./http.js";
@@ -39,6 +51,35 @@ import { canReplayRoom, createRoomLifecycle } from "./room-lifecycle.js";
 import { clamp, cleanName, cleanSession, generatedName, rand, requestedTeam, startingXForSlot } from "./utils.js";
 import { broadcast, closeClient, send, sendPing } from "./ws.js";
 
+const pool = DATA_BACKEND === "postgres" && DATABASE_URL ? createDatabasePool(DATABASE_URL) : null;
+const redis = REDIS_URL ? createRedisClient(REDIS_URL) : null;
+
+if (pool) {
+  try {
+    const { applied } = await runMigrations(pool);
+    if (applied.length) console.log(`[db] Applied ${applied.length} migrations: ${applied.join(", ")}`);
+  } catch (err) {
+    console.error("[db] Migration error:", err.message);
+  }
+}
+
+const leaderboard = pool || redis ? createLeaderboardRepository({ pool, redis }) : createLeaderboard(LEADERBOARD_FILE);
+const playerRepository = createPlayerRepository({ pool });
+const matchRepository = createMatchRepository({ pool });
+const sessionStore = createSessionStore(redis);
+const presenceStore = createPresenceStore(redis);
+const rateLimiter = createDistributedRateLimiter(redis);
+
+async function checkHealth() {
+  const dbHealth = pool ? await checkDatabaseHealth(pool) : { healthy: true, type: "memory" };
+  const redisHealth = redis ? await checkRedisHealth(redis) : { healthy: true, type: "memory" };
+  return {
+    ready: dbHealth.healthy && redisHealth.healthy,
+    database: dbHealth,
+    redis: redisHealth
+  };
+}
+
 const rooms = new Map();
 const clients = new Map();
 const stateMechanics = { countdownValue, empStrength, laserStrength, paddleWidth };
@@ -50,8 +91,7 @@ const { broadcastRooms, broadcastRoster, pruneRooms, publicRoomPage, publicRooms
   stateMechanics
 });
 
-const leaderboard = createLeaderboard(LEADERBOARD_FILE);
-const server = createHttpServer({ leaderboard, publicRoomPage });
+const server = createHttpServer({ checkHealth, leaderboard, publicRoomPage });
 attachWebSocketServer(server, {
   broadcastRooms,
   clients,
@@ -82,7 +122,7 @@ let shuttingDown = false;
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
-function shutdown() {
+async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(physicsTimer);
@@ -90,6 +130,8 @@ function shutdown() {
   clearInterval(heartbeatTimer);
   for (const room of rooms.values()) clearRoomTimer(room);
   for (const client of clients.values()) client.socket.destroy();
+  await closeDatabasePool(pool);
+  await closeRedisClient(redis);
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 4000).unref();
 }
@@ -609,6 +651,7 @@ function endRoomByPresence(room, winner) {
   room.pendingCountdown = false;
   room.nextPublishAt = 0;
   leaderboard.recordRoom(room);
+  matchRepository.recordMatch(room);
 }
 
 function tickRoom(room) {
@@ -650,6 +693,7 @@ function tickRoom(room) {
   advanceBalls(room, now, dt);
   checkWin(room, now);
   leaderboard.recordRoom(room);
+  matchRepository.recordMatch(room);
   if (room.status === "running" && room.pendingCountdown && room.balls.length === 0) {
     beginCountdown(room, now, room.mode === "2v2" ? "both" : room.lastMissTeam || "top");
     room.pendingCountdown = false;

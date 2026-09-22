@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.0] - 2026-09-23
+
+### Highlights
+- Built the distributed data foundation: durable data (players, match histories, leaderboards) is backed by PostgreSQL, while ephemeral state (sessions, presence, rate limits, leaderboard caching) is backed by Redis.
+- Enabled multi-replica safe migrations using PostgreSQL session advisory locks (`pg_advisory_lock(7148492)`), allowing concurrent pod startups without race conditions or migration conflicts.
+- Completely decoupled application pods from local disk state: removed the `/data/leaderboard.json` production requirement so pods are completely stateless and support Kubernetes zero-downtime `RollingUpdate` deployments.
+- Added Kubernetes and container health checks with `/health/live` (process liveness) and `/health/ready` (readiness probing PostgreSQL and Redis connectivity).
+- Preserved graceful in-memory fallbacks across all repositories and stores, allowing standalone local development and automated CI tests to run with zero external dependencies.
+- Added legacy migration CLI utility (`scripts/migrate-leaderboard-json.js`) to migrate historical JSON leaderboards into PostgreSQL.
+
+### Added
+- PostgreSQL connection pool manager (`server/src/db/pool.js`) with health validation and connection recycling.
+- Distributed migration framework (`server/src/db/migrator.js`) with advisory locking and migration tracking table.
+- Initial PostgreSQL schema (`001_initial_schema.sql`) for players, match records, player match statistics, and leaderboard snapshots.
+- Redis client factory (`server/src/redis/client.js`), distributed session store (`server/src/redis/session-store.js`), presence store (`server/src/redis/presence-store.js`), and rate limiter (`server/src/redis/rate-limiter.js`).
+- Repositories: `PostgresLeaderboardRepository` (with Redis read cache and TTL invalidation), `PostgresPlayerRepository`, `PostgresMatchRepository`, alongside in-memory equivalents.
+- Health endpoints `/health/live` and `/health/ready` in `server/src/http.js`.
+- Docker Compose configuration updated with PostgreSQL 16 and Redis 7 containers.
+- Kubernetes deployment (`deploy/k3s/monorally.yaml`) converted to stateless `RollingUpdate` with readiness and liveness probes.
+- Repository unit tests (`tests/unit/repositories.test.js`) and multi-replica distributed data integration tests (`tests/integration/distributed-data.test.js`).
+
+### Changed
+- MonoRally HTTP server now initializes data backend asynchronously and responds to liveness and readiness probes.
+- Updated `.env.example` with `DATA_BACKEND`, `DATABASE_URL`, and `REDIS_URL`.
+
 ## [v1.2.7] - 2026-09-23
 
 ### Highlights

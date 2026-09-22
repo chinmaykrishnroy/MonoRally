@@ -9,8 +9,8 @@ This document outlines the architectural and product milestones transitioning Mo
 | Version | Status | Milestone | Core Focus |
 |---|---|---|---|
 | **v1.2.6** | Complete | Baseline | Single-instance in-memory physics + JSON persistence baseline |
-| **v1.2.7** | Current Release | Fairness & Critical Stability Patch | Swept continuous collision detection, jitter-proof input sequencing, error UI |
-| **v1.3.0** | Planned | Distributed Data Foundation | PostgreSQL, Redis, database migrations, repository layer, zero local file persistence |
+| **v1.2.7** | Complete | Fairness & Critical Stability Patch | Swept continuous collision detection, jitter-proof input sequencing, error UI |
+| **v1.3.0** | Current Release | Distributed Data Foundation | PostgreSQL, Redis, database migrations, repository layer, zero local file persistence |
 | **v1.4.0** | Planned | Distributed Realtime Multiplayer | Gateway, Match Worker, Matchmaker, NATS Core bus, distributed room ownership |
 | **v1.5.0** | Planned | Resilience & Autoscaling | Worker draining, zero-downtime rolling updates, K8s HPA/PDB, failure injection |
 | **v1.6.0** | Planned | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |

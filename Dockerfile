@@ -18,7 +18,9 @@ WORKDIR /app
 
 RUN mkdir -p /data && chown node:node /data
 
-COPY --chown=node:node package.json ./
+COPY --chown=node:node package*.json ./
+RUN npm ci --omit=dev
+
 COPY --chown=node:node server ./server
 COPY --chown=node:node client ./client
 

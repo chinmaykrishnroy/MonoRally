@@ -21,7 +21,7 @@ const MIME = {
 
 const NO_STORE_EXTENSIONS = new Set([".html", ".js", ".css", ".webmanifest"]);
 
-export function createHttpServer({ leaderboard, publicRoomPage } = {}) {
+export function createHttpServer({ checkHealth, leaderboard, publicRoomPage } = {}) {
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -42,6 +42,36 @@ export function createHttpServer({ leaderboard, publicRoomPage } = {}) {
 
     const requestUrl = new URL(req.url, `http://${req.headers.host}`);
     const requested = decodeURIComponent(requestUrl.pathname);
+
+    if (requested === "/health/live") {
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      res.end(JSON.stringify({ status: "alive" }));
+      return;
+    }
+
+    if (requested === "/health/ready") {
+      Promise.resolve(checkHealth ? checkHealth() : { ready: true })
+        .then((health) => {
+          const isReady = health?.ready !== false;
+          res.writeHead(isReady ? 200 : 503, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify(health || { ready: true }));
+        })
+        .catch((err) => {
+          res.writeHead(503, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify({ ready: false, error: err.message }));
+        });
+      return;
+    }
+
     if (requested === "/config.json") {
       res.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
@@ -51,18 +81,31 @@ export function createHttpServer({ leaderboard, publicRoomPage } = {}) {
       return;
     }
     if (requested === "/leaderboard.json") {
-      res.writeHead(200, {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store"
-      });
-      res.end(
-        JSON.stringify({
-          boards: {
-            "1v1": leaderboard?.top("1v1", 10) || [],
-            "2v2": leaderboard?.top("2v2", 10) || []
-          }
+      Promise.all([
+        Promise.resolve(leaderboard?.top("1v1", 10) || []),
+        Promise.resolve(leaderboard?.top("2v2", 10) || [])
+      ])
+        .then(([board1v1, board2v2]) => {
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(
+            JSON.stringify({
+              boards: {
+                "1v1": board1v1,
+                "2v2": board2v2
+              }
+            })
+          );
         })
-      );
+        .catch((err) => {
+          res.writeHead(500, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify({ error: "Leaderboard unavailable", details: err.message }));
+        });
       return;
     }
     if (requested === "/rooms.json") {

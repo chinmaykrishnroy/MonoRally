@@ -6,6 +6,9 @@ export const PHYSICS_HZ = envNumber("PHYSICS_HZ", 60, 30, 240);
 export const NETWORK_HZ = envNumber("NETWORK_HZ", 30, 10, 60);
 export const PORT = envNumber("PORT", 8787, 1024, 65535);
 export const LEADERBOARD_FILE = process.env.LEADERBOARD_FILE || "./data/leaderboard.json";
+export const DATABASE_URL = process.env.DATABASE_URL || "";
+export const REDIS_URL = process.env.REDIS_URL || "";
+export const DATA_BACKEND = envText("DATA_BACKEND", DATABASE_URL ? "postgres" : "memory", ["postgres", "memory"]);
 export const DEBUG_NETWORK_TELEMETRY = envBoolean("DEBUG_NETWORK_TELEMETRY", false);
 export const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS ||
   `http://localhost:${PORT},http://127.0.0.1:${PORT},https://mono.prefect-sys.online`)
@@ -55,7 +58,7 @@ export const INPUT_PACKET = 1;
 
 export function publicConfig() {
   return {
-    appVersion: process.env.APP_VERSION || "1.2.7",
+    appVersion: process.env.APP_VERSION || "1.3.0",
     aiDifficulty: envText("AI_DIFFICULTY", "hard", ["easy", "medium", "hard", "insane"]),
     renderDelayMs: envNumber("RENDER_DELAY_MS", 25, 0, 100),
     quickMatchFallbackMs: QUICK_MATCH_FALLBACK_MS,

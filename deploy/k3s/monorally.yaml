@@ -5,9 +5,12 @@ metadata:
   labels:
     app.kubernetes.io/name: monorally
 spec:
-  replicas: 1
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: monorally
@@ -18,7 +21,7 @@ spec:
     spec:
       containers:
         - name: monorally
-          image: ghcr.io/chinmaykrishnroy/monorally:1.2.7
+          image: ghcr.io/chinmaykrishnroy/monorally:1.3.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -26,40 +29,36 @@ spec:
           env:
             - name: PORT
               value: "8787"
+            - name: DATA_BACKEND
+              value: "postgres"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: monorally-secrets
+                  key: database-url
+                  optional: true
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: monorally-secrets
+                  key: redis-url
+                  optional: true
             - name: CORS_ORIGINS
               value: "https://mono.prefect-sys.online"
-            - name: LEADERBOARD_FILE
-              value: "/data/leaderboard.json"
             - name: HIT_PRESENTATION_DELAY_MS
               value: "90"
-          volumeMounts:
-            - name: monorally-data
-              mountPath: /data
           readinessProbe:
             httpGet:
-              path: /config.json
+              path: /health/ready
               port: http
             initialDelaySeconds: 3
+            periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /config.json
+              path: /health/live
               port: http
             initialDelaySeconds: 10
-      volumes:
-        - name: monorally-data
-          persistentVolumeClaim:
-            claimName: monorally-data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: monorally-data
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
