@@ -40,7 +40,8 @@ function parseTrajectoryPacket(view, nameForSlot, scored) {
       ack: encodedAck === 0xffff ? null : encodedAck,
       score: 0,
       laser: Boolean(flags & 1),
-      emp: Boolean(flags & 2)
+      emp: Boolean(flags & 2),
+      overdrive: Boolean(flags & 4)
     });
   }
 
@@ -83,11 +84,15 @@ function parseTrajectoryPacket(view, nameForSlot, scored) {
     o += 2;
     const at = view.getUint32(o, true);
     o += 4;
-    const encodedSlot = view.getUint8(o++);
+    const rawSlotByte = view.getUint8(o++);
+    const slotNibble = rawSlotByte & 0x0f;
+    const slot = slotNibble === 0x0f || rawSlotByte === 255 ? -1 : slotNibble;
+    const shotTypeCode = rawSlotByte === 255 ? 0 : (rawSlotByte >> 4);
+    const shotType = shotName(shotTypeCode);
     const intensity = view.getUint8(o++) / 255;
     const score = scored ? view.getUint16(o, true) : 0;
     o += 2;
-    lastHit = { x, y, at, slot: encodedSlot === 255 ? -1 : encodedSlot, intensity, score };
+    lastHit = { x, y, at, slot, intensity, score, shotType };
   }
 
   let lastPower = null;
@@ -117,7 +122,7 @@ function parseLegacyPacket(view, nameForSlot) {
     o += 4;
     const w = view.getFloat32(o, true);
     o += 4;
-    players.push({ id: `slot-${slot}`, name: nameForSlot(slot), team, slot, x, w, vx: 0, ack: null, laser: Boolean(playerFlags & 1), emp: Boolean(playerFlags & 2) });
+    players.push({ id: `slot-${slot}`, name: nameForSlot(slot), team, slot, x, w, vx: 0, ack: null, laser: Boolean(playerFlags & 1), emp: Boolean(playerFlags & 2), overdrive: Boolean(playerFlags & 4) });
   }
 
   const balls = [];
@@ -154,7 +159,7 @@ function parseLegacyPacket(view, nameForSlot) {
     o += 4;
     const at = view.getFloat32(o, true);
     o += 4;
-    lastHit = { x, y, at, slot: -1, intensity: 0.5 };
+    lastHit = { x, y, at, slot: -1, intensity: 0.5, shotType: "standard" };
   }
 
   let lastPower = null;
@@ -222,9 +227,18 @@ export function powerName(code) {
   if (code === 1) return "multi";
   if (code === 2) return "laser";
   if (code === 3) return "emp";
+  if (code === 4) return "overdrive";
   return "";
 }
 
 export function labelPower(type) {
-  return type === "multi" ? "x4" : type === "laser" ? "<>" : "EMP";
+  return type === "multi" ? "x4" : type === "laser" ? "<>" : type === "emp" ? "EMP" : type === "overdrive" ? "OD" : "";
+}
+
+export function shotName(code) {
+  if (code === 1) return "smash";
+  if (code === 2) return "curve";
+  if (code === 3) return "counter";
+  if (code === 4) return "drive";
+  return "standard";
 }

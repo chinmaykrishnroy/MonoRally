@@ -218,16 +218,82 @@ function collidePaddle(room, player, ball, now, dt) {
   return true;
 }
 
+export function classifyShot(player, ball, paddleVelocity, hitX, center, width, now) {
+  const offset = clamp((hitX - center) / Math.max(1, width / 2), -1, 1);
+  const absOffset = Math.abs(offset);
+  const absPaddleSpeed = Math.abs(paddleVelocity);
+  const isOverdrive = Boolean(player.overdriveActiveUntil && player.overdriveActiveUntil > now);
+  const baseSpeed = Math.max(ball.speed || 0, Math.hypot(ball.vx, ball.vy), 1);
+
+  if (isOverdrive) {
+    return "smash";
+  }
+
+  // 1. Counter / Parry: Fast oncoming ball, paddle moving opposite to incoming x velocity, well centered
+  if (baseSpeed >= 540 && absOffset <= 0.45 && Math.sign(paddleVelocity) !== 0 && Math.sign(paddleVelocity) !== Math.sign(ball.vx)) {
+    return "counter";
+  }
+
+  // 2. Smash: Rapid paddle acceleration and hit within paddle central zone
+  if (absPaddleSpeed >= 1100 && absOffset <= 0.38) {
+    return "smash";
+  }
+
+  // 3. Curve: Outer edge slicing contact with paddle motion
+  if (absOffset >= 0.52 && absPaddleSpeed >= 380) {
+    return "curve";
+  }
+
+  // 4. Drive: Dead center hit with low paddle velocity
+  if (absOffset <= 0.16 && absPaddleSpeed <= 350) {
+    return "drive";
+  }
+
+  return "standard";
+}
+
 function applyPaddleBounce(room, player, ball, now, hitX, center, paddleVelocity, contactY) {
   const width = paddleWidth(player, now);
-  const speed = Math.max(ball.speed || 0, Math.hypot(ball.vx, ball.vy), 1);
+  const baseSpeed = Math.max(ball.speed || 0, Math.hypot(ball.vx, ball.vy), 1);
   const offset = clamp((hitX - center) / Math.max(1, width / 2), -1, 1);
-  const horizontalLimit = speed * Math.sin(MAX_BOUNCE_ANGLE);
-  const desiredVx = ball.vx * 0.42 + offset * speed * 0.72 + paddleVelocity * PADDLE_VELOCITY_TRANSFER;
-  ball.vx = clamp(desiredVx, -horizontalLimit, horizontalLimit);
+  const absPaddleSpeed = Math.abs(paddleVelocity);
+  const isOverdrive = Boolean(player.overdriveActiveUntil && player.overdriveActiveUntil > now);
+
+  const shotType = classifyShot(player, ball, paddleVelocity, hitX, center, width, now);
+
+  let desiredVx;
+  let speed = baseSpeed;
+
+  if (shotType === "counter") {
+    speed = Math.min(baseSpeed * 1.25 + 60, BALL_BASE_SPEED * BALL_MAX_SPEED_MULTIPLIER);
+    desiredVx = -ball.vx * 0.85 + offset * speed * 0.4 + paddleVelocity * 0.25;
+    ball.curve = clamp(paddleVelocity * BALL_SPIN_TRANSFER + offset * BALL_SPIN_OFFSET, -BALL_SPIN_MAX, BALL_SPIN_MAX);
+  } else if (shotType === "smash") {
+    speed = Math.min(baseSpeed * 1.35, BALL_BASE_SPEED * BALL_MAX_SPEED_MULTIPLIER);
+    if (isOverdrive) {
+      desiredVx = clamp(ball.vx * 0.15 + offset * 70, -60, 60);
+      ball.curve = 0;
+    } else {
+      desiredVx = ball.vx * 0.35 + offset * speed * 0.75 + paddleVelocity * (PADDLE_VELOCITY_TRANSFER * 1.2);
+      ball.curve = clamp(paddleVelocity * BALL_SPIN_TRANSFER + offset * BALL_SPIN_OFFSET, -BALL_SPIN_MAX, BALL_SPIN_MAX);
+    }
+  } else if (shotType === "curve") {
+    desiredVx = ball.vx * 0.4 + offset * speed * 0.8 + paddleVelocity * PADDLE_VELOCITY_TRANSFER;
+    const maxSpin = 1400;
+    ball.curve = clamp(Math.sign(offset) * (700 + absPaddleSpeed * 0.65), -maxSpin, maxSpin);
+  } else if (shotType === "drive") {
+    speed = baseSpeed * 1.08;
+    desiredVx = clamp(ball.vx * 0.15 + offset * 60, -45, 45);
+    ball.curve = 0;
+  } else {
+    desiredVx = ball.vx * 0.42 + offset * speed * 0.72 + paddleVelocity * PADDLE_VELOCITY_TRANSFER;
+    ball.curve = clamp(paddleVelocity * BALL_SPIN_TRANSFER + offset * BALL_SPIN_OFFSET, -BALL_SPIN_MAX, BALL_SPIN_MAX);
+  }
+
+  const effectiveHorizontalLimit = speed * Math.sin(MAX_BOUNCE_ANGLE);
+  ball.vx = clamp(desiredVx, -effectiveHorizontalLimit, effectiveHorizontalLimit);
   const verticalSpeed = Math.max(speed * 0.36, Math.sqrt(Math.max(0, speed * speed - ball.vx * ball.vx)));
   ball.vy = verticalSpeed * (player.team === "top" ? 1 : -1);
-  ball.curve = clamp(paddleVelocity * BALL_SPIN_TRANSFER + offset * BALL_SPIN_OFFSET, -BALL_SPIN_MAX, BALL_SPIN_MAX);
   ball.x = hitX;
   ball.y = contactY;
   ball.speed = Math.hypot(ball.vx, ball.vy);
@@ -248,7 +314,8 @@ function applyPaddleBounce(room, player, ball, now, hitX, center, paddleVelocity
     presentAt: now + HIT_PRESENTATION_DELAY_MS,
     slot: player.slot,
     score: player.returns,
-    intensity: clamp(Math.abs(offset) * 0.45 + Math.abs(paddleVelocity) / PADDLE_MAX_SPEED, 0.2, 1)
+    intensity: clamp(Math.abs(offset) * 0.45 + Math.abs(paddleVelocity) / PADDLE_MAX_SPEED + (shotType !== "standard" ? 0.28 : 0), 0.2, 1),
+    shotType
   };
 }
 
@@ -634,6 +701,10 @@ function collidePower(room, ball, now) {
     player.empActiveUntil = now + POWERUP_EFFECT_MS;
     player.empFadeUntil = player.empActiveUntil + POWERUP_EFFECT_MS;
   }
+  if (type === "overdrive") {
+    player.overdriveActiveUntil = now + POWERUP_EFFECT_MS;
+    player.overdriveFadeUntil = player.overdriveActiveUntil + POWERUP_EFFECT_MS;
+  }
   room.lastPower = { type, player: player.name, team: player.team, at: now };
   room.power = null;
   room.nextPowerAt = now + rand(POWERUP_MIN_MS, POWERUP_MAX_MS);
@@ -765,6 +836,12 @@ export function laserStrength(player, now) {
 export function empStrength(player, now) {
   if (player.empActiveUntil > now) return 1;
   if (player.empFadeUntil > now) return (player.empFadeUntil - now) / POWERUP_EFFECT_MS;
+  return 0;
+}
+
+export function overdriveStrength(player, now) {
+  if (player.overdriveActiveUntil > now) return 1;
+  if (player.overdriveFadeUntil > now) return (player.overdriveFadeUntil - now) / POWERUP_EFFECT_MS;
   return 0;
 }
 

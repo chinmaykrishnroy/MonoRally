@@ -44,6 +44,7 @@ import {
   empStrength,
   laserStrength,
   launchServe,
+  overdriveStrength,
   paddleWidth,
   updateBotTargets
 } from "./physics.js";
@@ -89,7 +90,7 @@ async function checkHealth() {
 
 const rooms = new Map();
 const clients = new Map();
-const stateMechanics = { countdownValue, empStrength, laserStrength, paddleWidth };
+const stateMechanics = { countdownValue, empStrength, laserStrength, overdriveStrength, paddleWidth };
 const { makeRoom, startRoom } = createRoomLifecycle(rooms);
 const { broadcastRooms, broadcastRoster, pruneRooms, publicRoomPage, publicRooms, publishState } = createBroadcasters({
   checkPresenceWin,
@@ -714,7 +715,7 @@ function tickRoom(room) {
 
   if (!room.power && now >= room.nextPowerAt) {
     room.power = {
-      type: ["multi", "laser", "emp"][Math.floor(Math.random() * 3)],
+      type: ["multi", "laser", "emp", "overdrive"][Math.floor(Math.random() * 4)],
       x: W / 2 + rand(-140, 140),
       y: H / 2 + rand(-70, 70),
       r: 18

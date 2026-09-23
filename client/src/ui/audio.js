@@ -61,14 +61,39 @@ export function createAudio({ state, settings }) {
       tone(320 + offset * 190, 0.045, 0.18, "square", bus, delay);
       tone(165 + offset * 90, 0.08, 0.08, "triangle", bus, delay + 0.012);
     },
+    playSmash(delay = 0) {
+      const bus = master(0.32);
+      sweep(640, 160, 0.08, 0.25, "sawtooth", delay, bus);
+      tone(120, 0.12, 0.22, "triangle", bus, delay + 0.01);
+    },
+    playCurve(delay = 0) {
+      const bus = master(0.24);
+      sweep(320, 680, 0.09, 0.16, "sine", delay, bus);
+      tone(440, 0.06, 0.1, "triangle", bus, delay + 0.02);
+    },
+    playCounter(delay = 0) {
+      const bus = master(0.28);
+      tone(880, 0.07, 0.2, "triangle", bus, delay);
+      tone(1320, 0.05, 0.15, "sine", bus, delay + 0.005);
+      sweep(380, 920, 0.06, 0.12, "square", delay, bus);
+    },
+    playDrive(delay = 0) {
+      const bus = master(0.26);
+      tone(220, 0.08, 0.22, "square", bus, delay);
+      sweep(180, 290, 0.05, 0.15, "triangle", delay, bus);
+    },
     playWall(delay = 0) {
       const bus = master(0.16);
       tone(640, 0.035, 0.12, "sine", bus, delay);
       tone(920, 0.028, 0.06, "triangle", bus, delay + 0.014);
     },
-    playPower() {
-      const bus = master(0.22);
-      [260, 390, 520, 780].forEach((freq, index) => tone(freq, 0.11, 0.13, "sine", bus, index * 0.045));
+    playPower(type) {
+      const bus = master(0.25);
+      if (type === "overdrive") {
+        [330, 495, 660, 990].forEach((freq, index) => tone(freq, 0.12, 0.16, "sine", bus, index * 0.04));
+      } else {
+        [260, 390, 520, 780].forEach((freq, index) => tone(freq, 0.11, 0.13, "sine", bus, index * 0.045));
+      }
     },
     playMiss(delay = 0) {
       sweep(150, 48, 0.22, 0.055, "sawtooth", delay);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { H, W } from "../../server/src/config.js";
-import { advanceBalls, beginCountdown, checkWin, launchServe, makeBall, updateBotTargets } from "../../server/src/physics.js";
+import { advanceBalls, beginCountdown, checkWin, classifyShot, launchServe, makeBall, overdriveStrength, updateBotTargets } from "../../server/src/physics.js";
 
 function player(team, slot, overrides = {}) {
   const x = overrides.x ?? W / 2;
@@ -305,5 +305,55 @@ describe("server physics", () => {
     expect(room.balls).toEqual([]);
     expect(room.power).toBeNull();
     expect(room.pendingCountdown).toBe(false);
+  });
+
+  test("classifies distinct skill shot mechanics accurately", () => {
+    const bottom = player("bottom", 0);
+    const ball = { vx: 200, vy: -500, speed: 538 };
+
+    // Standard hit: moderate speed, small offset
+    expect(classifyShot(bottom, ball, 200, 520, 500, 140, 1000)).toBe("standard");
+
+    // Smash: rapid paddle acceleration (>= 1100) and within center zone (absOffset <= 0.38)
+    expect(classifyShot(bottom, ball, 1250, 510, 500, 140, 1000)).toBe("smash");
+
+    // Curve: outer edge hit (absOffset >= 0.52) with paddle speed >= 380
+    // width=140, halfWidth=70. offset = 45 / 70 = 0.643 >= 0.52
+    expect(classifyShot(bottom, ball, 400, 545, 500, 140, 1000)).toBe("curve");
+
+    // Counter: baseSpeed >= 540, absOffset <= 0.45, paddle moving opposite to ball vx
+    const fastBall = { vx: 300, vy: -500, speed: 583 };
+    expect(classifyShot(bottom, fastBall, -200, 505, 500, 140, 1000)).toBe("counter");
+
+    // Drive: dead center hit (absOffset <= 0.16) with low paddle velocity (<= 350)
+    expect(classifyShot(bottom, ball, 100, 502, 500, 140, 1000)).toBe("drive");
+
+    // Overdrive always forces smash
+    const overdrivePlayer = player("bottom", 0, { overdriveActiveUntil: 2000 });
+    expect(classifyShot(overdrivePlayer, ball, 50, 500, 500, 140, 1000)).toBe("smash");
+  });
+
+  test("computes overdrive strength across active, fade, and expired states", () => {
+    const p = player("bottom", 0, {
+      overdriveActiveUntil: 6000,
+      overdriveFadeUntil: 11000
+    });
+
+    expect(overdriveStrength(p, 1000)).toBe(1);
+    expect(overdriveStrength(p, 5999)).toBe(1);
+    expect(overdriveStrength(p, 8500)).toBeCloseTo(0.5, 2);
+    expect(overdriveStrength(p, 11000)).toBe(0);
+    expect(overdriveStrength(p, 12000)).toBe(0);
+  });
+
+  test("populates shotType in room.lastHit upon paddle bounce", () => {
+    const bottom = player("bottom", 0, { bot: true, clientId: null });
+    const room = roomFixture({ players: [bottom, player("top", 1)], balls: [crossingBall()] });
+
+    advanceBalls(room, 1000, 1 / 60);
+
+    expect(room.lastHit).toBeDefined();
+    expect(room.lastHit.shotType).toBeDefined();
+    expect(["standard", "smash", "curve", "counter", "drive"]).toContain(room.lastHit.shotType);
   });
 });

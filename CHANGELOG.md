@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.7.0] - 2026-09-23
+
+### Highlights
+- Server-Authoritative Skill Shot System: Physical paddle contact classification identifying **Smash** ($1.35\times$ acceleration boost), **Curve** (wicked $\pm 1400\text{ px/s}^2$ Magnus spin), **Counter / Parry** (redirected momentum off fast incoming balls), and **Drive** (laser-flat trajectory on centered contact).
+- Overdrive Powerup: Rare collectible powerup orb that charges paddles with cyber emerald energy, instantly supercharging every return into an amplified Smash for 5 seconds.
+- Floating Skill Badges: Real-time on-court dynamic floating typography badges (`SMASH!`, `CURVE!`, `COUNTER!`, `DRIVE!`) matching theme accents with kinetic scale and fade animations.
+- Procedural Synthesizer Audio: Zero-asset, zero-latency Web Audio oscillator synthesis with custom frequency sweeps, harmonics, and resonant filter envelopes tailored to each skill shot and powerup.
+- Backward-Compatible Binary Protocol: High-nibble bit-packing in `lastHit` binary byte and player flag bit-masking maintaining 100% two-way protocol compatibility.
+
+### Added
+- `classifyShot` and `overdriveStrength` physics engine modules in `server/src/physics.js`.
+- `overdrive` powerup rotation in `server/src/index.js` and `server/src/services/worker-service.js`.
+- Bit-packed `shotType` and `overdrive` player flag encoding/decoding in `server/src/serialization.js` and `client/src/network/protocol.js`.
+- Procedural sound synthesis methods (`playSmash`, `playCurve`, `playCounter`, `playDrive`, overdrive chord) in `client/src/ui/audio.js`.
+- Skill shot typography badges and overdrive glowing paddle aura in `client/src/rendering/renderer.js`.
+- Skill shot and overdrive unit tests in `tests/unit/physics.test.js` and `tests/unit/protocol.test.js`.
+
+### Changed
+- `applyPaddleBounce` dynamically adjusts return speed, trajectory angle, and curve spin based on skill shot classification.
+- `lastHit` events dispatched to clients carry the validated server-authoritative `shotType`.
+
 ## [v1.6.0] - 2026-09-23
 
 ### Highlights

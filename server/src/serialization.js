@@ -25,7 +25,8 @@ export function jsonState(room, now, mechanics) {
       ack: player.lastProcessedInputSequence,
       score: player.returns || 0,
       laser: mechanics.laserStrength(player, now) > 0,
-      emp: mechanics.empStrength(player, now) > 0
+      emp: mechanics.empStrength(player, now) > 0,
+      overdrive: (mechanics.overdriveStrength?.(player, now) || 0) > 0
     })),
     balls: activeBalls(room).map((ball) => ({
       id: ball.id,
@@ -72,7 +73,7 @@ export function statePacket(room, now, mechanics, includePlayerScores = false) {
   for (const player of players) {
     packet[o++] = player.slot < 0 ? 255 : player.slot;
     packet[o++] = teamCode(player.team);
-    packet[o++] = (mechanics.laserStrength(player, now) > 0 ? 1 : 0) | (mechanics.empStrength(player, now) > 0 ? 2 : 0);
+    packet[o++] = (mechanics.laserStrength(player, now) > 0 ? 1 : 0) | (mechanics.empStrength(player, now) > 0 ? 2 : 0) | ((mechanics.overdriveStrength?.(player, now) || 0) > 0 ? 4 : 0);
     packet[o++] = 0;
     packet.writeUInt16LE(encodeRange(player.x, 0, W), o);
     o += 2;
@@ -119,7 +120,9 @@ export function statePacket(room, now, mechanics, includePlayerScores = false) {
     o += 2;
     packet.writeUInt32LE(encodeTimestamp32(performance.timeOrigin + (lastHit.presentAt ?? lastHit.at)), o);
     o += 4;
-    packet[o++] = Number.isInteger(lastHit.slot) && lastHit.slot >= 0 ? lastHit.slot : 255;
+    const slotNibble = Number.isInteger(lastHit.slot) && lastHit.slot >= 0 ? (lastHit.slot & 0x0f) : 0x0f;
+    const shotNibble = (shotCode(lastHit.shotType) & 0x0f) << 4;
+    packet[o++] = slotNibble | shotNibble;
     packet[o++] = Math.round(clamp01(lastHit.intensity ?? 0.5) * 255);
     packet.writeUInt16LE(Math.min(65535, Math.max(0, Number(lastHit.score) || 0)), o);
     o += 2;
@@ -172,7 +175,7 @@ export function legacyStatePacket(room, now, mechanics) {
   for (const player of players) {
     packet[o++] = player.slot < 0 ? 255 : player.slot;
     packet[o++] = teamCode(player.team);
-    packet[o++] = (mechanics.laserStrength(player, now) > 0 ? 1 : 0) | (mechanics.empStrength(player, now) > 0 ? 2 : 0);
+    packet[o++] = (mechanics.laserStrength(player, now) > 0 ? 1 : 0) | (mechanics.empStrength(player, now) > 0 ? 2 : 0) | ((mechanics.overdriveStrength?.(player, now) || 0) > 0 ? 4 : 0);
     packet[o++] = 0;
     packet.writeFloatLE(player.x, o);
     o += 4;
@@ -296,5 +299,14 @@ function powerCode(type) {
   if (type === "multi") return 1;
   if (type === "laser") return 2;
   if (type === "emp") return 3;
+  if (type === "overdrive") return 4;
+  return 0;
+}
+
+export function shotCode(type) {
+  if (type === "smash") return 1;
+  if (type === "curve") return 2;
+  if (type === "counter") return 3;
+  if (type === "drive") return 4;
   return 0;
 }

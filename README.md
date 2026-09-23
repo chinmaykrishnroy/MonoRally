@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.6.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.6.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.7.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.7.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -137,16 +137,16 @@ kubectl apply -f deploy/k3s/autoscaling.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.6.0`, MonoRally delivers a premium visual identity, customizable accent themes, and accessibility modes:
-- **Accent Color Themes**: Choose between Neon Cyan, Solar Amber, Cyber Emerald, Plasma Violet, and Classic Monochrome with instant live preview and persistent client state.
-- **Dynamic Velocity Trails & Supersonic Bloom**: Velocity-scaled ball trails render dynamic tapered blooms when ball speeds exceed 480 px/s.
-- **Squash, Stretch & Impact Shockwaves**: Velocity-directed ball stretching, physical paddle impact squashes, and expanding multi-tier shockwaves on high-intensity smashes.
-- **High-Contrast Accessibility Mode**: High-visibility contrast outlines on paddles, balls, and court boundaries ensuring crisp accessibility in all lighting conditions.
-- **Worker Draining & Dynamic Resilience**: Continued enterprise-grade worker draining, HPA autoscaling (up to 100 worker replicas), and PDB disruption safety from v1.5.0.
+As of `v1.7.0`, MonoRally delivers distinctive gameplay identity, skill shot execution, overdrive powerups, and procedural Web Audio synthesis:
+- **Skill Shot System**: Dynamic server-authoritative physics classification identifying **Smash** ($1.35\times$ acceleration boost), **Curve** (wicked $\pm 1400\text{ px/s}^2$ Magnus spin), **Counter / Parry** (redirected momentum off fast incoming balls), and **Drive** (laser-flat trajectory on centered contact).
+- **Overdrive Powerup**: Collect the rare Overdrive orb to charge your paddle with glowing cyber emerald energy, instantly supercharging every return into an amplified Smash for 5 seconds.
+- **Skill Shot Feedback**: Real-time on-court floating typography badges (`SMASH!`, `CURVE!`, `COUNTER!`, `DRIVE!`) and dynamic camera/rumble feedback.
+- **Procedural Synthesizer Audio**: Zero-asset, zero-latency Web Audio oscillator synthesis generating custom sonic signatures for each skill shot and powerup activation without audio download overhead.
+- **Accent Color Themes & Accessibility**: Full custom palette support (Neon Cyan, Solar Amber, Cyber Emerald, Plasma Violet, Classic Monochrome) and high-contrast accessibility mode with dynamic contrast borders.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.6.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.7.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 

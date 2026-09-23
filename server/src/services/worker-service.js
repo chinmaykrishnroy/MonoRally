@@ -22,6 +22,7 @@ import {
   empStrength,
   laserStrength,
   launchServe,
+  overdriveStrength,
   paddleWidth,
   updateBotTargets
 } from "../physics.js";
@@ -52,7 +53,7 @@ export class WorkerService {
 
     this.rooms = new Map();
     this.draining = false;
-    this.stateMechanics = { countdownValue, empStrength, laserStrength, paddleWidth };
+    this.stateMechanics = { countdownValue, empStrength, laserStrength, overdriveStrength, paddleWidth };
     const lifecycle = createRoomLifecycle(this.rooms);
     this.makeRoom = lifecycle.makeRoom;
     this.startRoom = lifecycle.startRoom;
@@ -608,7 +609,7 @@ export class WorkerService {
 
     if (!room.power && now >= room.nextPowerAt) {
       room.power = {
-        type: ["multi", "laser", "emp"][Math.floor(Math.random() * 3)],
+        type: ["multi", "laser", "emp", "overdrive"][Math.floor(Math.random() * 4)],
         x: W / 2 + rand(-140, 140),
         y: H / 2 + rand(-70, 70),
         r: 18

@@ -111,7 +111,7 @@ const dom = {
   statusEl,
   timerEl
 };
-const { cancelRumble, playGameOver, playMiss, playPower, playRumble, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
+const { cancelRumble, playCounter, playCurve, playDrive, playGameOver, playMiss, playPower, playRumble, playSmash, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
 const { closeModal, ensureHandle, loadConfig, loadSettings, openModal, saveSettings } = createSettingsUi({ elements, state });
 const renderer = createRenderer({
   ctx,
@@ -441,9 +441,16 @@ function handleServer(msg) {
         toLocalPerformance: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp)
       });
       const roomAtHit = state.room;
-      playStrike(0.3, delayMs / 1000);
+      const shotType = msg.lastHit.shotType || "standard";
+      const shotDelaySec = delayMs / 1000;
+      if (shotType === "smash") playSmash(shotDelaySec);
+      else if (shotType === "curve") playCurve(shotDelaySec);
+      else if (shotType === "counter") playCounter(shotDelaySec);
+      else if (shotType === "drive") playDrive(shotDelaySec);
+      else playStrike(0.3, shotDelaySec);
+
       scheduleImpactVisual(roomAtHit, delayMs, () => {
-        hitEffect(msg.lastHit.x, renderer.toViewY(msg.lastHit.y, msg));
+        hitEffect(msg.lastHit.x, renderer.toViewY(msg.lastHit.y, msg), shotType);
         pulseShake("impact-shake");
       });
       hadNewHit = true;
@@ -456,7 +463,7 @@ function handleServer(msg) {
     const powerStamp = msg.lastPower ? `${msg.lastPower.type}:${msg.lastPower.at}` : "";
     if (powerStamp && powerStamp !== state.lastPowerStamp) {
       state.lastPowerStamp = powerStamp;
-      playPower();
+      playPower(msg.lastPower?.type);
     }
     state.lastNetState = msg;
     const receivedAt = performance.now();
@@ -778,8 +785,18 @@ function isPlayingActive() {
   return state.online && state.role === "player" && state.lastNetState?.status === "running";
 }
 
-function hitEffect(x, y) {
-  state.effects.push({ x, y, r: 8, createdAt: performance.now(), duration: 320, spin: Math.random() * Math.PI * 2 });
+function hitEffect(x, y, shotType = "standard") {
+  const isSkillShot = shotType !== "standard";
+  state.effects.push({
+    x,
+    y,
+    r: isSkillShot ? 14 : 8,
+    createdAt: performance.now(),
+    duration: isSkillShot ? 420 : 320,
+    spin: Math.random() * Math.PI * 2,
+    highEnergy: isSkillShot,
+    shotType
+  });
 }
 
 function scheduleImpactVisual(room, delayMs, callback) {

@@ -102,7 +102,14 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
       ctx.translate(view.power.x, view.power.y);
       const powerR = visualPowerRadius(view.power.r);
       const pulse = 1 + Math.sin(performance.now() / 130) * 0.1;
-      ctx.strokeStyle = fg;
+      const powerColors = {
+        multi: "#ffb700",
+        laser: "#00f0ff",
+        emp: "#bf5af2",
+        overdrive: "#00ff88"
+      };
+      const powerColor = (!inverted && powerColors[view.power.type]) || fg;
+      ctx.strokeStyle = powerColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(0, 0, powerR * pulse, 0, Math.PI * 2);
@@ -113,7 +120,7 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
       ctx.stroke();
       ctx.globalAlpha = 1;
       ctx.scale(powerR / view.power.r, powerR / view.power.r);
-      drawPowerIcon(view.power.type, fg);
+      drawPowerIcon(view.power.type, powerColor);
       ctx.restore();
     }
 
@@ -178,6 +185,16 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
+      if (p.overdrive) {
+        ctx.save();
+        ctx.strokeStyle = "#00ff88";
+        ctx.lineWidth = Math.max(2, cssPxToCourt(2.5));
+        ctx.shadowColor = "#00ff88";
+        ctx.shadowBlur = 12;
+        ctx.globalAlpha = 0.85;
+        ctx.strokeRect(paddleX - 4, paddleY - 4, paddleW + 8, renderedH + 8);
+        ctx.restore();
+      }
       const themeInfo = getThemeColors();
       if (themeInfo.isHighContrast) {
         ctx.save();
@@ -224,6 +241,19 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
         ctx.stroke();
       }
       drawSpark(effect, progress);
+      if (effect.shotType && effect.shotType !== "standard") {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, (1 - progress) * 0.95);
+        ctx.font = "bold 18px Consolas, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowColor = effectColors.accent;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = effectColors.accent;
+        const textY = effect.y < H / 2 ? effect.y + 32 + progress * 24 : effect.y - 32 - progress * 24;
+        ctx.fillText(effect.shotType.toUpperCase() + "!", effect.x, textY);
+        ctx.restore();
+      }
       ctx.globalAlpha = 1;
       if (progress >= 1) state.effects.splice(i, 1);
     }
@@ -485,6 +515,17 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
       ctx.lineTo(14, 5);
       ctx.stroke();
       ctx.fillRect(-3, -10, 6, 20);
+    } else if (type === "overdrive") {
+      ctx.beginPath();
+      ctx.moveTo(2, -12);
+      ctx.lineTo(-7, 1);
+      ctx.lineTo(0, 1);
+      ctx.lineTo(-2, 12);
+      ctx.lineTo(7, -1);
+      ctx.lineTo(0, -1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     } else {
       ctx.beginPath();
       ctx.arc(0, 0, 5, 0, Math.PI * 2);

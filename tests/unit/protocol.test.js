@@ -7,6 +7,7 @@ const mechanics = {
   countdownValue: () => 2,
   empStrength: (player) => (player.emp ? 1 : 0),
   laserStrength: (player) => (player.laser ? 1 : 0),
+  overdriveStrength: (player) => (player.overdrive ? 1 : 0),
   paddleWidth: (player) => player.w
 };
 
@@ -89,4 +90,38 @@ describe("state packet protocol", () => {
     expect(parsed.players[0]).toMatchObject({ name: "alpha", score: 0 });
     expect(parsed.lastHit).toMatchObject({ slot: 0, score: 17 });
   });
+
+  test("round-trips skill shots and overdrive flags in binary protocol", () => {
+    const shotTypes = ["standard", "smash", "curve", "counter", "drive"];
+    for (let i = 0; i < shotTypes.length; i += 1) {
+      const shotType = shotTypes[i];
+      const room = {
+        mode: "1v1",
+        status: "running",
+        startedAt: 500,
+        missLimit: 5,
+        misses: { top: 0, bottom: 0 },
+        winner: null,
+        players: [
+          { clientId: "a", name: "alpha", team: "bottom", slot: 0, x: 500, w: 140, overdrive: true }
+        ],
+        balls: [],
+        power: { type: "overdrive", x: 500, y: 350, r: 18 },
+        lastHit: { x: 500, y: 650, at: 1000, slot: 0, intensity: 0.9, shotType },
+        spectators: []
+      };
+
+      const packet = statePacket(room, 1000, mechanics);
+      const parsed = parseStatePacket(
+        packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength),
+        () => "alpha"
+      );
+
+      expect(parsed.players[0].overdrive).toBe(true);
+      expect(parsed.power.type).toBe("overdrive");
+      expect(parsed.lastHit.shotType).toBe(shotType);
+      expect(parsed.lastHit.slot).toBe(0);
+    }
+  });
 });
+
