@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.10.0] - 2026-09-23
+
+### Highlights
+- High-Resolution Match Result Cards: Off-screen 1200×630 canvas generator creating dark cyberpunk post-match cards with one-click clipboard image copy (`navigator.clipboard.write`), PNG file download, and native device share sheet integration.
+- Deterministic Compact Match Replay Engine: In-browser ~15 Hz keyframe recording (~25–35 KB per match), 60+ FPS interpolated playback HUD with interactive timeline scrubber, variable playback speeds (`0.5x`, `1x`, `2x`), local replay history library in `localStorage`, and portable JSON file export/import.
+- Rich OpenGraph & SEO Metadata: Complete social preview meta cards (`og:title`, `og:description`, `og:image`, `twitter:card`), dedicated 1200×630 cyberpunk social card (`/og-image.png`), `VideoGame` JSON-LD structured data, enhanced PWA web manifest shortcuts, and offline service worker caching.
+
+### Added
+- Result card generator `client/src/sharing/result-card.js` with `renderResultCard`, `formatDuration`, and clipboard/file export utilities.
+- Share card modal controller `client/src/sharing/share-modal.js` for previewing and exporting result cards.
+- Replay recorder `client/src/replay/replay-recorder.js` for lightweight client-side match keyframe recording (~15 Hz).
+- Replay player `client/src/replay/replay-player.js` with smooth Hermite/linear interpolation and timeline scrubbing.
+- Replay store `client/src/replay/replay-store.js` for localStorage persistence, eviction, and JSON import/export.
+- Share Card modal, Replay HUD, and Recent Replays list in `client/public/index.html` and `client/public/styles.css`.
+- Comprehensive unit test suites in `tests/unit/result-card.test.js`, `tests/unit/replay.test.js`, and `tests/unit/replay-store.test.js`.
+- Playwright E2E browser tests for OpenGraph head metadata and Recent Replays UI in `tests/e2e/monorally.spec.js`.
+
+### Fixed
+- Fixed replay guard ordering in `server/src/index.js` ensuring `room.status !== "ended"` returns `"Replay is available after game over"` before evaluating connected player presence.
+
 ## [v1.9.0] - 2026-09-23
 
 ### Highlights

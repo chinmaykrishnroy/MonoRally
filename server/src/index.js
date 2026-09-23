@@ -462,6 +462,10 @@ function replayRoom(client) {
     send(client, { t: "error", message: "Only players can replay" });
     return;
   }
+  if (room.status !== "ended") {
+    send(client, { t: "error", message: "Replay is available after game over" });
+    return;
+  }
   if (!canReplayRoom(room, clients)) {
     send(client, { t: "error", message: "Replay is unavailable because a player left" });
     return;

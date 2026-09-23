@@ -56,7 +56,7 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/chinmaykrishnroy/monorally:1.9.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -123,7 +123,7 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: worker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.9.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:
@@ -171,7 +171,7 @@ spec:
     spec:
       containers:
         - name: matchmaker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.9.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
           imagePullPolicy: IfNotPresent
           env:
             - name: SERVICE_ROLE

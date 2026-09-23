@@ -16,9 +16,9 @@ This document outlines the architectural and product milestones transitioning Mo
 | **v1.6.0** | Complete | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |
 | **v1.7.0** | Complete | Distinctive Gameplay Identity | Signature skill shots (smash, curve, counter, drive), overdrive powerup, procedural audio |
 | **v1.8.0** | Complete | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests, achievements |
-| **v1.9.0** | Current Release | Social Multiplayer & Population Loop | Mutual rematch consent, spectator cheers & reactions, background AI warmup, direct URL invites |
-| **v1.10.0** | Next Milestone | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |
-| **v1.11.0** | Planned | Large-Scale Validation & Hardening | Synthetic load tests (up to 200 replicas), telemetry metrics, capacity profiling |
+| **v1.9.0** | Complete | Social Multiplayer & Population Loop | Mutual rematch consent, spectator cheers & reactions, background AI warmup, direct URL invites |
+| **v1.10.0** | Current Release | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |
+| **v1.11.0** | Next Milestone | Large-Scale Validation & Hardening | Synthetic load tests (up to 200 replicas), telemetry metrics, capacity profiling |
 
 ---
 
@@ -86,11 +86,11 @@ This document outlines the architectural and product milestones transitioning Mo
   - Direct Link Room Sharing: Web Share API with clipboard fallback, deep-link query parameter parsing (`?join=CODE&role=player`), and frictionless room joins.
 
 ### v1.10.0 — Sharing, Replays & Discoverability (MINOR)
-- **Objective**: Organic discovery and voluntary social sharing.
+- **Objective**: Organic discovery and voluntary social sharing through high-resolution result cards, deterministic match replays, and rich OpenGraph/SEO metadata.
 - **Key Deliverables**:
-  - High-resolution match result cards ready for one-click clipboard/social share.
-  - Deterministic compact match replay recording and playback.
-  - Polished OpenGraph preview cards, web app manifest, SEO metadata.
+  - High-Resolution Match Result Cards: 1200×630 off-screen canvas generator creating dark cyberpunk post-match cards with one-click clipboard image copy (`navigator.clipboard.write`), PNG file download, and native device share sheet integration.
+  - Deterministic Compact Match Replay Engine: In-browser ~15 Hz keyframe recording (~25–35 KB per match), 60+ FPS interpolated playback HUD with interactive timeline scrubber, variable playback speeds (`0.5x`, `1x`, `2x`), local replay history library in `localStorage`, and portable JSON file export/import.
+  - Rich OpenGraph & SEO Metadata: Complete social preview meta cards (`og:title`, `og:description`, `og:image`, `twitter:card`), dedicated 1200×630 cyberpunk social card (`/og-image.png`), `VideoGame` JSON-LD structured data, enhanced PWA web manifest shortcuts, and offline service worker caching.
 
 ### v1.11.0 — Large-Scale Validation & Hardening (MINOR)
 - **Objective**: Operational certification for 200+ container replicas.

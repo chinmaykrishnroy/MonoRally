@@ -75,6 +75,24 @@ export function collectDom() {
     highContrastInput: $("highContrastInput"),
     statusEl: $("status"),
     matchResult: $("matchResult"),
-    timerEl: $("timer")
+    timerEl: $("timer"),
+    // v1.10.0 Sharing & Replays elements
+    shareCardBtn: $("shareCardBtn"),
+    watchReplayBtn: $("watchReplayBtn"),
+    replayHud: $("replayHud"),
+    replayTitle: $("replayTitle"),
+    replayExitBtn: $("replayExitBtn"),
+    replayPlayPauseBtn: $("replayPlayPauseBtn"),
+    replayTimeDisplay: $("replayTimeDisplay"),
+    replayScrubber: $("replayScrubber"),
+    replayExportBtn: $("replayExportBtn"),
+    shareCardModal: $("shareCardModal"),
+    shareCardPreview: $("shareCardPreview"),
+    copyCardBtn: $("copyCardBtn"),
+    downloadCardBtn: $("downloadCardBtn"),
+    shareNativeBtn: $("shareNativeBtn"),
+    shareToast: $("shareToast"),
+    profileReplaysList: $("profileReplaysList"),
+    replayFileInput: $("replayFileInput")
   };
 }

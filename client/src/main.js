@@ -6,6 +6,11 @@ import { parseStatePacket as parseBinaryStatePacket } from "./network/protocol.j
 import { createNetwork } from "./network/socket.js";
 import { clearResumeRoom, readResumeRoom, saveResumeRoom, sessionId } from "./platform/session.js";
 import { createRenderer, stagingSlots } from "./rendering/renderer.js";
+import { renderResultCard } from "./sharing/result-card.js";
+import { createShareModalController } from "./sharing/share-modal.js";
+import { ReplayRecorder } from "./replay/replay-recorder.js";
+import { ReplayPlayer } from "./replay/replay-player.js";
+import { defaultReplayStore } from "./replay/replay-store.js";
 import { createAudio } from "./ui/audio.js";
 import { collectDom } from "./ui/dom.js";
 import { createErrorUi } from "./ui/error-ui.js";
@@ -22,6 +27,11 @@ const state = {
   clientId: null,
   online: false,
   local: false,
+  isReplaying: false,
+  replayRecorder: new ReplayRecorder(),
+  replayPlayer: new ReplayPlayer(),
+  lastCompletedReplay: null,
+  lastMatchData: null,
   role: "lobby",
   team: "bottom",
   slot: -1,
@@ -104,8 +114,105 @@ const {
   statusEl,
   timerEl
 } = elements;
-const profileUi = createProfileUi({ elements, state });
+const profileUi = createProfileUi({ elements, state, onWatchReplay: (r) => launchReplay(r) });
 profileUi.init();
+
+const shareModal = createShareModalController({
+  modalEl: elements.shareCardModal,
+  previewImg: elements.shareCardPreview,
+  copyBtn: elements.copyCardBtn,
+  downloadBtn: elements.downloadCardBtn,
+  shareNativeBtn: elements.shareNativeBtn,
+  closeBtn: elements.shareCardModal?.querySelector?.("[data-close-modal]"),
+  toastEl: elements.shareToast
+});
+
+function launchReplay(replay) {
+  if (!replay || !replay.frames?.length) return;
+  state.isReplaying = true;
+  state.replayPlayer.load(replay);
+  if (elements.replayHud) elements.replayHud.classList.remove("hidden");
+  if (elements.replayTitle) {
+    elements.replayTitle.textContent = `${(replay.mode || "1v1").toUpperCase()} Replay`;
+  }
+  elements.menu.classList.add("hidden");
+  elements.playFlow.classList.add("hidden");
+  elements.game.classList.remove("hidden");
+  elements.overlay.classList.add("hidden");
+  dom.matchResult?.classList.add("hidden");
+  renderer.resize();
+}
+
+function exitReplay() {
+  state.isReplaying = false;
+  state.replayPlayer.unload();
+  if (elements.replayHud) elements.replayHud.classList.add("hidden");
+  if (state.lastCompletedReplay && state.lastNetState?.status === "ended") {
+    dom.matchResult?.classList.remove("hidden");
+  } else {
+    leaveGame();
+  }
+}
+
+if (elements.shareCardBtn) {
+  elements.shareCardBtn.addEventListener("click", () => {
+    if (!state.lastMatchData) return;
+    const offscreen = document.createElement("canvas");
+    renderResultCard(offscreen, state.lastMatchData);
+    shareModal.open(offscreen, state.lastMatchData);
+  });
+}
+
+if (elements.watchReplayBtn) {
+  elements.watchReplayBtn.addEventListener("click", () => {
+    if (state.lastCompletedReplay) {
+      launchReplay(state.lastCompletedReplay);
+    }
+  });
+}
+
+if (elements.replayPlayPauseBtn) {
+  elements.replayPlayPauseBtn.addEventListener("click", () => state.replayPlayer.toggle());
+}
+if (elements.replayExitBtn) {
+  elements.replayExitBtn.addEventListener("click", exitReplay);
+}
+if (elements.replayScrubber) {
+  elements.replayScrubber.addEventListener("input", (e) => {
+    const frac = Number(e.target.value) / 1000;
+    state.replayPlayer.seekProgress(frac);
+  });
+}
+document.querySelectorAll(".replaySpeedGroup .speedBtn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".replaySpeedGroup .speedBtn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.replayPlayer.setSpeed(Number(btn.dataset.speed));
+  });
+});
+if (elements.replayExportBtn) {
+  elements.replayExportBtn.addEventListener("click", () => {
+    if (state.replayPlayer.replay) {
+      defaultReplayStore.exportJson(state.replayPlayer.replay);
+    }
+  });
+}
+
+state.replayPlayer.subscribe((info) => {
+  if (elements.replayPlayPauseBtn) {
+    elements.replayPlayPauseBtn.textContent = info.status === "playing" ? "⏸" : "▶";
+  }
+  if (elements.replayTimeDisplay) {
+    const curM = String(Math.floor(info.currentTime / 60)).padStart(2, "0");
+    const curS = String(Math.floor(info.currentTime % 60)).padStart(2, "0");
+    const durM = String(Math.floor(info.duration / 60)).padStart(2, "0");
+    const durS = String(Math.floor(info.duration % 60)).padStart(2, "0");
+    elements.replayTimeDisplay.textContent = `${curM}:${curS} / ${durM}:${durS}`;
+  }
+  if (elements.replayScrubber && document.activeElement !== elements.replayScrubber) {
+    elements.replayScrubber.value = String(Math.round(info.progress * 1000));
+  }
+});
 const dom = {
   fillAiBtn,
   matchResult: elements.matchResult,
@@ -444,6 +551,14 @@ function handleServer(msg) {
     state.gameOverSoundFor = "";
     state.netBuffer = [];
     state.lastNetState = onlinePlaceholder(msg.mode);
+    state.replayRecorder.start({
+      mode: msg.mode || "1v1",
+      missLimit: msg.mode === "2v2" ? 8 : 5,
+      players: [
+        { name: nameInput.value.trim() || "you", team: state.team },
+        { name: "opponent", team: state.team === "bottom" ? "top" : "bottom" }
+      ]
+    });
     state.lastHitStamp = 0;
     state.lastPowerStamp = "";
     state.lastMissTotal = 0;
@@ -511,6 +626,7 @@ function handleServer(msg) {
       playPower(msg.lastPower?.type);
     }
     state.lastNetState = msg;
+    state.replayRecorder.recordFrame(msg);
     const receivedAt = performance.now();
     state.lastSnapshotReceivedAt = receivedAt;
     const timelineAt = msg.protocol >= 3 ? clock.localPerformanceForServerTimestamp(msg.serverNow) : receivedAt;
@@ -530,6 +646,14 @@ function handleServer(msg) {
   if (msg.t === "replayStarted") {
     state.netBuffer = [];
     state.lastNetState = onlinePlaceholder(msg.mode);
+    state.replayRecorder.start({
+      mode: msg.mode || "1v1",
+      missLimit: msg.mode === "2v2" ? 8 : 5,
+      players: [
+        { name: nameInput.value.trim() || "you", team: state.team },
+        { name: "opponent", team: state.team === "bottom" ? "top" : "bottom" }
+      ]
+    });
     state.lastMissTotal = 0;
     state.lastBumpSignature = "";
     state.gameOverSoundFor = "";
@@ -662,6 +786,14 @@ function startLocal(label) {
   state.predictedPaddleVx = 0;
   state.localGame = newLocalGame();
   state.localGame.players[0].name = handle;
+  state.replayRecorder.start({
+    mode: "1v1",
+    missLimit: 5,
+    players: [
+      { name: handle || "you", team: "bottom" },
+      { name: "ai", team: "top" }
+    ]
+  });
   resetRoundVisuals();
   showGame(label);
   roomBadge.hidden = true;
@@ -736,6 +868,14 @@ function replayGame() {
   if (state.local) {
     const label = modeLabel.textContent || "AI mode";
     state.localGame = newLocalGame();
+    state.replayRecorder.start({
+      mode: "1v1",
+      missLimit: 5,
+      players: [
+        { name: settings.name || "you", team: "bottom" },
+        { name: "ai", team: "top" }
+      ]
+    });
     resetRoundVisuals();
     replayBtn.hidden = true;
     modeLabel.textContent = label;
@@ -791,7 +931,16 @@ function frame(now) {
   try {
     const dt = Math.min(0.034, (now - state.lastTime) / 1000);
     state.lastTime = now;
-    if (state.localGame) state.localGame.update(dt);
+    if (state.isReplaying) {
+      state.replayPlayer.update(dt);
+      renderer.draw(state.replayPlayer.getSnapshot());
+      requestAnimationFrame(frame);
+      return;
+    }
+    if (state.localGame) {
+      state.localGame.update(dt);
+      state.replayRecorder.recordFrame(state.localGame.snapshot());
+    }
     if (state.localGame?.status === "ended") maybePlayGameOver(state.localGame.snapshot());
     if (state.keys.size && isPlayingActive()) {
       if (state.keys.has("arrowleft") || state.keys.has("a")) state.inputX -= dt * 1.35;
@@ -940,6 +1089,49 @@ function maybePlayGameOver(snapshot) {
   state.gameOverSoundFor = key;
   const ownTeam = state.local ? "bottom" : state.team;
   playGameOver(snapshot.winner === ownTeam);
+
+  const completed = state.replayRecorder.finalize({
+    winner: snapshot.winner,
+    elapsed: snapshot.elapsed
+  });
+  if (completed) {
+    defaultReplayStore.save(completed);
+    state.lastCompletedReplay = completed;
+  }
+
+  const ownWon = snapshot.winner === ownTeam;
+  const ownPlayer = snapshot.players?.find((p) => p.team === ownTeam) || { name: settings.name || "You" };
+  const oppPlayer = snapshot.players?.find((p) => p.team !== ownTeam) || { name: state.local ? "AI" : "Opponent" };
+  const prof = profileUi.getProfile();
+
+  state.lastMatchData = {
+    outcome: ownWon ? "VICTORY" : "DEFEAT",
+    mode: snapshot.mode,
+    duration: snapshot.elapsed || 60,
+    player: {
+      name: ownPlayer.name || settings.name || "You",
+      rankTier: prof?.rankTier?.tier || "Silver",
+      elo: prof?.eloRating || 1200,
+      delta: ownWon ? "+24" : "-24",
+      misses: ownTeam === "bottom" ? snapshot.misses.bottom : snapshot.misses.top,
+      missLimit: snapshot.missLimit || 5
+    },
+    opponent: {
+      name: oppPlayer.name || (state.local ? "AI" : "Opponent"),
+      rankTier: "Silver",
+      elo: 1200,
+      delta: ownWon ? "-24" : "+24",
+      misses: ownTeam === "bottom" ? snapshot.misses.top : snapshot.misses.bottom,
+      missLimit: snapshot.missLimit || 5
+    },
+    stats: completed?.stats || {
+      peakSpeed: 820,
+      totalReturns: 36,
+      skillShots: { smash: 2, curve: 1, counter: 0, drive: 3 }
+    },
+    siteUrl: window.location.origin.replace(/^https?:\/\//, "")
+  };
+
   profileUi.init();
 }
 

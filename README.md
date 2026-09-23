@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.9.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.9.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.10.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.10.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -137,17 +137,16 @@ kubectl apply -f deploy/k3s/autoscaling.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.9.0`, MonoRally introduces social multiplayer and population growth features:
-- **Mutual Rematch Consent**: Symmetrical 15-second mutual acceptance countdown for 2-player human matches with instant room reset, leave-to-decline feedback, and instant zero-wait replay in solo AI practice.
-- **Spectator Cheers & Live Reactions**: Real-time floating spectator emojis (`👏`, `🔥`, `⚡`, `🚀`, `🎯`) with server rate-limiting, cross-gateway pub/sub distribution, and animated canvas particle rendering.
-- **Background AI Warmup Matchmaking**: Instant on-court practice while queueing for online opponents, with seamless hot-swap transition into the multiplayer room when a match is found.
-- **Direct Link Room Sharing**: Web Share API integration with automatic fallback to clipboard copy, deep-link URL parameter joining (`?join=CODE&role=player`), and frictionless cross-platform game invites.
+As of `v1.10.0`, MonoRally introduces sharing, match replays, and organic discoverability:
+- **High-Resolution Match Result Cards**: Off-screen 1200×630 canvas generator creating dark cyberpunk post-match cards with one-click clipboard image copy (`navigator.clipboard.write`), PNG file download, and native device share sheet integration.
+- **Deterministic Match Replay Engine**: In-browser ~15 Hz keyframe recording (~25–35 KB per match), 60+ FPS interpolated playback HUD with interactive timeline scrubber, variable playback speeds (`0.5x`, `1x`, `2x`), local replay history library in `localStorage`, and portable JSON file export/import.
+- **Rich OpenGraph & SEO Metadata**: Complete social preview meta cards (`og:title`, `og:description`, `og:image`, `twitter:card`), dedicated 1200×630 cyberpunk social card (`/og-image.png`), `VideoGame` JSON-LD structured data, enhanced PWA web manifest shortcuts, and offline service worker caching.
+- **Social Multiplayer & Rematches**: Symmetrical 15-second mutual acceptance countdown for 2-player matches, spectator floating emoji reactions (`👏`, `🔥`, `⚡`, `🚀`, `🎯`), and background AI warmup queueing.
 - **Authoritative Symmetrical Elo Engine & Profiles**: Persistent anonymous UUID, true Elo calculation ($K=32$) with six tiered ranks (Bronze to Master), profile dashboard, match history, and milestone achievements.
-- **Distinctive Gameplay & Skill Shots**: Dynamic server-authoritative physics classification identifying **Smash** ($1.35\times$ boost), **Curve** ($\pm 1400\text{ px/s}^2$ Magnus spin), **Counter / Parry**, and **Drive**, coupled with Overdrive powerups and procedural synthesizer audio.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.9.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.10.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 

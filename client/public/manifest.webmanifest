@@ -1,13 +1,15 @@
 {
   "name": "MonoRally",
   "short_name": "MonoRally",
-  "description": "A minimal black-and-white paddle game with AI, quick match, rooms, and spectators.",
+  "description": "Fast-paced multiplayer cyber paddle rallies with pure skill physics, symmetrical Elo ranked matchmaking, 1v1 and 2v2 modes, spectator cheers, and instant replays.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "any",
+  "lang": "en",
+  "categories": ["games", "arcade", "sports"],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -26,6 +28,22 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Match",
+      "short_name": "Quick",
+      "description": "Start a 1v1 online ranked match",
+      "url": "/?mode=1v1",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Practice AI",
+      "short_name": "Practice",
+      "description": "Warm up against the AI on court",
+      "url": "/?mode=practice",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

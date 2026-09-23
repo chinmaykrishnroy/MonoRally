@@ -450,3 +450,29 @@ test("portrait court is top aligned above the thumb control region", async ({ pa
   expect(layout.statusTop - layout.courtBottom).toBeGreaterThan(layout.viewportHeight * 0.25);
   expect(Math.abs(layout.scoreRight - layout.missesRight)).toBeLessThan(1);
 });
+
+test("validates OpenGraph, Twitter, and SEO metadata in head", async ({ page }) => {
+  await page.goto("/");
+  const meta = await page.evaluate(() => ({
+    ogTitle: document.querySelector('meta[property="og:title"]')?.getAttribute("content"),
+    ogImage: document.querySelector('meta[property="og:image"]')?.getAttribute("content"),
+    twitterCard: document.querySelector('meta[name="twitter:card"]')?.getAttribute("content"),
+    description: document.querySelector('meta[name="description"]')?.getAttribute("content"),
+    jsonLd: document.querySelector('script[type="application/ld+json"]')?.textContent
+  }));
+
+  expect(meta.ogTitle).toContain("MonoRally");
+  expect(meta.ogImage).toBe("/og-image.png");
+  expect(meta.twitterCard).toBe("summary_large_image");
+  expect(meta.description).toContain("cyber paddle");
+  expect(meta.jsonLd).toContain("VideoGame");
+});
+
+test("profile modal renders recent replays section and load input", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#profileBtn");
+  await expect(page.locator("#profileModal")).toBeVisible();
+  await expect(page.locator("#profileReplaysList")).toBeVisible();
+  await expect(page.locator('label[for="replayFileInput"]')).toBeVisible();
+});
+

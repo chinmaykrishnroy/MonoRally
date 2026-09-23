@@ -1,6 +1,7 @@
 import { calculateAchievements, fetchRemoteProfile, loadLocalProfile, saveLocalProfile, syncProfileWithServer } from "../core/profile.js";
+import { defaultReplayStore } from "../replay/replay-store.js";
 
-export function createProfileUi({ elements, state }) {
+export function createProfileUi({ elements, state, onWatchReplay } = {}) {
   const {
     $,
     profileBtn,
@@ -114,6 +115,55 @@ export function createProfileUi({ elements, state }) {
 
     renderAchievements(profile);
     renderMatchHistory(matches);
+    renderReplays();
+  }
+
+  function renderReplays() {
+    const container = $("profileReplaysList");
+    if (!container) return;
+    const replays = defaultReplayStore.getAll();
+    container.innerHTML = "";
+
+    if (!replays || !replays.length) {
+      container.innerHTML = `<p class="historyEmpty">No saved replays yet. Play a match to record automatically!</p>`;
+      return;
+    }
+
+    for (const r of replays) {
+      const item = document.createElement("div");
+      item.className = "replayCardItem";
+      const dateStr = r.startedAt ? new Date(r.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+      const winnerStr = r.winner ? (r.winner === "bottom" ? "Victory" : "Defeat") : "Match";
+      item.innerHTML = `
+        <div class="replayCardMeta">
+          <span class="replayCardTitle">${(r.mode || "1v1").toUpperCase()} · ${winnerStr} (${r.duration || 0}s)</span>
+          <span class="replayCardSub">${dateStr} · Peak ${r.stats?.peakSpeed || 0} px/s</span>
+        </div>
+        <div class="replayCardActions">
+          <button class="replaySmallBtn watchBtn" type="button">Watch</button>
+          <button class="replaySmallBtn downloadBtn" type="button" title="Download JSON">💾</button>
+          <button class="replaySmallBtn deleteBtn" type="button" title="Delete">✕</button>
+        </div>
+      `;
+
+      item.querySelector(".watchBtn")?.addEventListener?.("click", () => {
+        closeProfile();
+        if (typeof onWatchReplay === "function") {
+          onWatchReplay(r);
+        }
+      });
+
+      item.querySelector(".downloadBtn")?.addEventListener?.("click", () => {
+        defaultReplayStore.exportJson(r);
+      });
+
+      item.querySelector(".deleteBtn")?.addEventListener?.("click", () => {
+        defaultReplayStore.delete(r.id);
+        renderReplays();
+      });
+
+      container.appendChild(item);
+    }
   }
 
   function renderAchievements(profile) {
@@ -170,6 +220,30 @@ export function createProfileUi({ elements, state }) {
   const closeBtn = profileModal?.querySelector?.("[data-close-modal]");
   if (closeBtn) {
     closeBtn.addEventListener("click", closeProfile);
+  }
+
+  const fileInput = $("replayFileInput");
+  if (fileInput?.addEventListener) {
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const replay = defaultReplayStore.importJson(evt.target.result);
+          defaultReplayStore.save(replay);
+          renderReplays();
+          closeProfile();
+          if (typeof onWatchReplay === "function") {
+            onWatchReplay(replay);
+          }
+        } catch (err) {
+          alert(`Could not load replay: ${err.message}`);
+        }
+      };
+      reader.readAsText(file);
+      fileInput.value = "";
+    });
   }
 
   return {

@@ -5,7 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#000000">
     <meta name="color-scheme" content="dark light">
-    <title>MonoRally</title>
+    <title>MonoRally — Minimal High-Speed Cyber Rallies</title>
+    <meta name="description" content="High-speed multiplayer cyber paddle rallies. Pure skill physics, symmetrical Elo ranked matchmaking, 1v1 and 2v2 modes, spectator cheers, and instant replays.">
+    <meta name="keywords" content="paddle, pong, multiplayer, web game, arcade, cyber, elo, ranked, monorally, pwa">
+    <meta name="author" content="MonoRally">
+    <link rel="canonical" href="https://monorally.app/">
+
+    <!-- OpenGraph Metadata -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="MonoRally — Minimal High-Speed Cyber Rallies">
+    <meta property="og:description" content="High-speed multiplayer cyber paddle rallies. Pure skill physics, symmetrical Elo ranked matchmaking, 1v1 and 2v2 modes, spectator cheers, and instant replays.">
+    <meta property="og:image" content="/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:url" content="https://monorally.app/">
+    <meta property="og:site_name" content="MonoRally">
+
+    <!-- Twitter Card Metadata -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MonoRally — Minimal High-Speed Cyber Rallies">
+    <meta name="twitter:description" content="High-speed multiplayer cyber paddle rallies. Play instantly in your browser with zero installs.">
+    <meta name="twitter:image" content="/og-image.png">
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "MonoRally",
+      "description": "Minimal high-speed ball and paddle game with AI, quick match, rooms, spectators, and PWA support.",
+      "genre": ["Arcade", "Sports", "Multiplayer"],
+      "playMode": ["SinglePlayer", "MultiPlayer", "CoOp"],
+      "applicationCategory": "Game",
+      "operatingSystem": "Any",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
@@ -137,6 +177,28 @@
           <span>Match over</span>
           <strong id="resultTitle">You won</strong>
           <span id="resultScore">You 0 · Them 0</span>
+          <div class="resultActions">
+            <button id="shareCardBtn" class="resultActionBtn" type="button" aria-label="Share match result card">Share Card</button>
+            <button id="watchReplayBtn" class="resultActionBtn" type="button" aria-label="Watch match replay">Watch Replay</button>
+          </div>
+        </div>
+        <div id="replayHud" class="replayHud hidden" aria-label="Replay Controls">
+          <div class="replayHeader">
+            <span class="replayBadge">REPLAY MODE</span>
+            <span id="replayTitle" class="replayTitle">Match Replay</span>
+            <button id="replayExitBtn" type="button" class="replaySmallBtn" aria-label="Exit Replay">Exit</button>
+          </div>
+          <div class="replayControls">
+            <button id="replayPlayPauseBtn" type="button" class="replayPlayBtn" aria-label="Play or Pause">⏸</button>
+            <span id="replayTimeDisplay" class="replayTime">00:00 / 00:00</span>
+            <input type="range" id="replayScrubber" min="0" max="1000" value="0" aria-label="Replay timeline scrubber">
+            <div class="replaySpeedGroup" aria-label="Playback speed">
+              <button type="button" class="speedBtn" data-speed="0.5">0.5x</button>
+              <button type="button" class="speedBtn active" data-speed="1.0">1x</button>
+              <button type="button" class="speedBtn" data-speed="2.0">2x</button>
+            </div>
+            <button id="replayExportBtn" type="button" class="replaySmallBtn" aria-label="Export Replay JSON" title="Download replay as .json">Export</button>
+          </div>
         </div>
         <div class="controlCoach hidden" id="controlCoach" role="status">
           <div><strong>Move your bottom paddle</strong><span>Drag anywhere across the lower half</span></div>
@@ -267,6 +329,35 @@
               <h4>Combat Achievements</h4>
               <div class="profileBadges" id="profileBadges"></div>
             </div>
+
+            <div class="profileSection">
+              <div class="sectionHeaderRow">
+                <h4>Recent Match Replays</h4>
+                <label class="uploadReplayLabel" for="replayFileInput">
+                  <span>📂 Load Replay</span>
+                  <input type="file" id="replayFileInput" accept=".json" hidden>
+                </label>
+              </div>
+              <div class="replaysList" id="profileReplaysList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="modal hidden" id="shareCardModal" role="dialog" aria-modal="true" aria-labelledby="shareCardTitle">
+          <div class="modalHeader">
+            <h2 id="shareCardTitle">Match Result Card</h2>
+            <button class="closeBtn" data-close-modal>Close</button>
+          </div>
+          <div class="shareCardContent">
+            <div class="shareCardPreviewWrapper">
+              <img id="shareCardPreview" alt="Match Result Card" class="shareCardImg">
+            </div>
+            <div class="shareCardActions">
+              <button id="copyCardBtn" class="primaryBtn" type="button">Copy Image</button>
+              <button id="downloadCardBtn" class="actionBtn" type="button">Download PNG</button>
+              <button id="shareNativeBtn" class="actionBtn" type="button">Share</button>
+            </div>
+            <div id="shareToast" class="shareToast hidden" role="status">Image copied to clipboard!</div>
           </div>
         </section>
 
