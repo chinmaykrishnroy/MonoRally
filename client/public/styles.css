@@ -729,6 +729,10 @@ body.game-active .game {
   font-weight: 700;
 }
 
+.resultActions {
+  pointer-events: auto;
+}
+
 .controlCoach {
   position: absolute;
   z-index: 6;
