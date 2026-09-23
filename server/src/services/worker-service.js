@@ -2,6 +2,7 @@ import {
   H,
   INPUT_FUTURE_TOLERANCE_MS,
   INPUT_HISTORY_MS,
+  MAX_SPECTATORS,
   NETWORK_HZ,
   PADDLE_ACCELERATION,
   PADDLE_MAX_SPEED,
@@ -325,6 +326,13 @@ export class WorkerService {
   handleJoin(room, data) {
     const { clientId, gatewayId, name, sessionId, spectator, teamPreference, protocol } = data;
     if (spectator) {
+      if (room.spectators.length >= MAX_SPECTATORS) {
+        this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
+          t: "error",
+          message: "Spectator limit reached"
+        });
+        return;
+      }
       room.spectators.push({ id: clientId, clientId, gatewayId });
       this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
         t: "joined",
