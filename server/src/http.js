@@ -21,7 +21,32 @@ const MIME = {
 
 const NO_STORE_EXTENSIONS = new Set([".html", ".js", ".css", ".webmanifest"]);
 
-export function createHttpServer({ checkHealth, leaderboard, publicRoomPage, onDrain } = {}) {
+function readJsonBody(req, limit = 16384) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("Payload too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        const text = Buffer.concat(chunks).toString("utf8");
+        resolve(text ? JSON.parse(text) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+export function createHttpServer({ checkHealth, leaderboard, playerRepository, matchRepository, publicRoomPage, onDrain } = {}) {
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -133,6 +158,92 @@ export function createHttpServer({ checkHealth, leaderboard, publicRoomPage, onD
           }) || { rooms: [], total: 0, hasMore: false, nextOffset: 0 }
         )
       );
+      return;
+    }
+
+    if (requested.startsWith("/api/profile")) {
+      if (req.method === "POST") {
+        readJsonBody(req)
+          .then(async (body) => {
+            const profile = await playerRepository?.getOrCreatePlayer(body);
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ profile }));
+          })
+          .catch((err) => {
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ error: err.message }));
+          });
+        return;
+      }
+
+      if (req.method === "GET") {
+        const pathPart = requested.replace(/^\/api\/profile\/?/, "").trim();
+        const id = pathPart || requestUrl.searchParams.get("id");
+        const handle = requestUrl.searchParams.get("handle");
+
+        Promise.resolve()
+          .then(async () => {
+            let player = null;
+            if (id) {
+              player = await playerRepository?.getPlayer(id);
+            }
+            if (!player && handle) {
+              player = await playerRepository?.getPlayerByHandle(handle);
+            }
+            if (!player && id && !id.includes("-")) {
+              player = await playerRepository?.getPlayerByHandle(id);
+            }
+
+            if (!player) {
+              res.writeHead(404, {
+                "Content-Type": "application/json; charset=utf-8",
+                "Cache-Control": "no-store"
+              });
+              res.end(JSON.stringify({ error: "Player not found" }));
+              return;
+            }
+
+            const matches = matchRepository ? await matchRepository.getPlayerMatches(player.id, 10) : [];
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ profile: player, matches }));
+          })
+          .catch((err) => {
+            res.writeHead(500, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ error: "Internal error", details: err.message }));
+          });
+        return;
+      }
+    }
+
+    if (requested === "/api/ranked/leaderboard") {
+      const limit = Number(requestUrl.searchParams.get("limit")) || 25;
+      Promise.resolve(playerRepository?.getRankedLeaderboard(limit) || [])
+        .then((leaderboardList) => {
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify({ leaderboard: leaderboardList }));
+        })
+        .catch((err) => {
+          res.writeHead(500, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify({ error: "Failed to load ranked leaderboard", details: err.message }));
+        });
       return;
     }
 

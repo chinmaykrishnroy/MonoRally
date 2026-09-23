@@ -44,6 +44,8 @@ export function collectDom() {
     playHome: $("playHome"),
     privateRoomBtn: $("privateRoomBtn"),
     privateStep: $("privateStep"),
+    profileBtn: $("profileBtn"),
+    profileModal: $("profileModal"),
     publicJoinPlayer: $("publicJoinPlayer"),
     publicJoinSpectator: $("publicJoinSpectator"),
     publicRoomCode: $("publicRoomCode"),

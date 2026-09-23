@@ -49,6 +49,7 @@ import {
   updateBotTargets
 } from "./physics.js";
 import { canReplayRoom, createRoomLifecycle } from "./room-lifecycle.js";
+import { finalizeMatch } from "./match-finalizer.js";
 import { clamp, cleanName, cleanSession, generatedName, rand, requestedTeam, startingXForSlot } from "./utils.js";
 import { broadcast, closeClient, send, sendPing } from "./ws.js";
 import { createEventBus } from "./bus/index.js";
@@ -121,7 +122,7 @@ async function handleDrain() {
   }, 90000);
 }
 
-const server = createHttpServer({ checkHealth, leaderboard, publicRoomPage, onDrain: handleDrain });
+const server = createHttpServer({ checkHealth, leaderboard, playerRepository, matchRepository, publicRoomPage, onDrain: handleDrain });
 attachWebSocketServer(server, {
   broadcastRooms,
   clients,
@@ -186,6 +187,7 @@ function handleMessage(client, msg) {
     client.teamPreference = requestedTeam(msg.name);
     client.name = cleanName(msg.name);
     client.sessionId = cleanSession(msg.sessionId);
+    client.playerId = String(msg.playerId || "").trim() || null;
     client.protocol = Math.max(1, Math.min(4, Number(msg.protocol) || 1));
     send(client, { t: "hello", id: client.id, name: client.name, port: PORT, protocol: client.protocol });
   }
@@ -485,6 +487,7 @@ function addPlayer(room, client, assignment = null) {
     clientId: client.id,
     name: client.name,
     sessionId: client.sessionId,
+    profileId: client.playerId || null,
     team,
     slot,
     disconnected: false,
@@ -682,8 +685,7 @@ function endRoomByPresence(room, winner) {
   room.countdownUntil = 0;
   room.pendingCountdown = false;
   room.nextPublishAt = 0;
-  leaderboard.recordRoom(room);
-  matchRepository.recordMatch(room);
+  finalizeMatch(room, { leaderboard, playerRepository, matchRepository });
 }
 
 function tickRoom(room) {
@@ -724,8 +726,7 @@ function tickRoom(room) {
 
   advanceBalls(room, now, dt);
   checkWin(room, now);
-  leaderboard.recordRoom(room);
-  matchRepository.recordMatch(room);
+  finalizeMatch(room, { leaderboard, playerRepository, matchRepository });
   if (room.status === "running" && room.pendingCountdown && room.balls.length === 0) {
     beginCountdown(room, now, room.mode === "2v2" ? "both" : room.lastMissTeam || "top");
     room.pendingCountdown = false;

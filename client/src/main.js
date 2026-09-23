@@ -11,6 +11,7 @@ import { collectDom } from "./ui/dom.js";
 import { createErrorUi } from "./ui/error-ui.js";
 import { createLeaderboardUi } from "./ui/leaderboard.js";
 import { createPlayFlow } from "./ui/play-flow.js";
+import { createProfileUi } from "./ui/profile-ui.js";
 import { createSettingsUi } from "./ui/settings-ui.js";
 
 const state = {
@@ -86,6 +87,7 @@ const {
   networkBadge,
   nameInput,
   overlay,
+  profileBtn,
   renderDelayInput,
   replayBtn,
   roomCode,
@@ -100,6 +102,8 @@ const {
   statusEl,
   timerEl
 } = elements;
+const profileUi = createProfileUi({ elements, state });
+profileUi.init();
 const dom = {
   fillAiBtn,
   matchResult: elements.matchResult,
@@ -168,13 +172,13 @@ const playFlow = createPlayFlow({
     create: (mode, visibility) => {
       unlockAudio();
       send(helloMessage());
-      send({ t: "createRoom", mode, visibility });
+      send({ t: "createRoom", mode, visibility, playerId: profileUi.getProfile().id });
       playFlow.setStatus(`Creating a ${visibility} ${mode} room...`);
     },
     join: (code, role) => {
       unlockAudio();
       send(helloMessage());
-      send({ t: "joinRoom", code, role });
+      send({ t: "joinRoom", code, role, playerId: profileUi.getProfile().id });
       playFlow.setStatus(role === "spectator" ? `Opening room ${code}...` : `Joining room ${code}...`);
     },
     modeChanged: (mode) => {
@@ -189,13 +193,13 @@ const playFlow = createPlayFlow({
       }
       state.autoFillAi = true;
       send(helloMessage());
-      send({ t: "createRoom", mode: "2v2", visibility: "private" });
+      send({ t: "createRoom", mode: "2v2", visibility: "private", playerId: profileUi.getProfile().id });
       playFlow.setStatus("Preparing a 2v2 AI practice match...");
     },
     quick: (mode) => {
       unlockAudio();
       send(helloMessage());
-      send({ t: "quick", mode });
+      send({ t: "quick", mode, playerId: profileUi.getProfile().id });
     },
     requestRooms: requestPublicRooms
   }
@@ -328,7 +332,7 @@ function bindUi() {
 }
 
 function helloMessage() {
-  return { t: "hello", name: ensureHandle(), sessionId: SESSION_ID, protocol: 4 };
+  return { t: "hello", name: ensureHandle(), sessionId: SESSION_ID, playerId: profileUi.getProfile().id, protocol: 4 };
 }
 
 function sendInput() {
@@ -834,6 +838,7 @@ function maybePlayGameOver(snapshot) {
   state.gameOverSoundFor = key;
   const ownTeam = state.local ? "bottom" : state.team;
   playGameOver(snapshot.winner === ownTeam);
+  profileUi.init();
 }
 
 function maybePlayWall(snapshot, hadNewHit) {

@@ -52,6 +52,17 @@ test("home guides players through a small play flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Private room/ })).toBeVisible();
 });
 
+test("opens and displays player profile modal with rank and stats", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "single profile test contract");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Profile" }).click();
+  await expect(page.locator("#profileModal")).toBeVisible();
+  await expect(page.locator("#profileEloValue")).toContainText("Elo");
+  await expect(page.locator("#profileTierPill")).toContainText(/SILVER|BRONZE|GOLD/);
+  await page.locator("#profileModal [data-close-modal]").click();
+  await expect(page.locator("#profileModal")).toBeHidden();
+});
+
 test("home renders ten scrollable rankers for both match sizes", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "single leaderboard rendering contract");
   const entries = (mode) => Array.from({ length: 10 }, (_, index) => ({

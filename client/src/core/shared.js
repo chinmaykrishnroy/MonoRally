@@ -2,7 +2,7 @@ export const W = 1000;
 export const H = 680;
 
 export const config = {
-  appVersion: "1.7.0",
+  appVersion: "1.8.0",
   aiDifficulty: "hard",
   renderDelayMs: 25,
   quickMatchFallbackMs: 5000,
@@ -40,6 +40,7 @@ export const settings = {
 };
 
 export const SETTINGS_KEY = "monorally-settings-v1";
+export const PROFILE_KEY = "monorally-profile-v1";
 export const SESSION_KEY = "monorally_session";
 export const RESUME_KEY = "monorally-resume-v1";
 export const COACH_KEY = "monorally-coach-v1";

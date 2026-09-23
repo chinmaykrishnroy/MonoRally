@@ -14,9 +14,9 @@ This document outlines the architectural and product milestones transitioning Mo
 | **v1.4.0** | Complete | Distributed Realtime Multiplayer | Gateway, Match Worker, Matchmaker, NATS Core bus, distributed room ownership |
 | **v1.5.0** | Complete | Resilience & Autoscaling | Worker draining, zero-downtime rolling updates, K8s HPA/PDB, failure injection |
 | **v1.6.0** | Complete | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |
-| **v1.7.0** | Current Release | Distinctive Gameplay Identity | Signature skill shots (smash, curve, counter, drive), overdrive powerup, procedural audio |
-| **v1.8.0** | Next Milestone | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests |
-| **v1.9.0** | Planned | Social Multiplayer & Population Loop | Background human matchmaking during AI warmup, mutual rematches, invites |
+| **v1.7.0** | Complete | Distinctive Gameplay Identity | Signature skill shots (smash, curve, counter, drive), overdrive powerup, procedural audio |
+| **v1.8.0** | Current Release | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests, achievements |
+| **v1.9.0** | Next Milestone | Social Multiplayer & Population Loop | Background human matchmaking during AI warmup, mutual rematches, invites |
 | **v1.10.0** | Planned | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |
 | **v1.11.0** | Planned | Large-Scale Validation & Hardening | Synthetic load tests (up to 200 replicas), telemetry metrics, capacity profiling |
 
@@ -69,11 +69,13 @@ This document outlines the architectural and product milestones transitioning Mo
   - Backward-compatible bit-packed binary protocol for skill shots and overdrive flags.
 
 ### v1.8.0 — Player Profiles, Ranked & Retention (MINOR)
-- **Objective**: Competitive progression and durable player records.
+- **Objective**: Competitive progression, anonymous player identity, and durable player records.
 - **Key Deliverables**:
-  - Persistent player profiles with PvP stats (wins, losses, win rate, peak speed, streaks).
-  - Segregated Elo ranking for ranked human PvP.
-  - Non-pay-to-play cosmetic progression (paddle themes, court visual accents).
+  - Persistent player profiles with PvP stats (wins, losses, win rate, peak speed, streaks, skill shots).
+  - Symmetrical Elo rating engine ($K=32$) and six rank tiers (Bronze, Silver, Gold, Platinum, Diamond, Master).
+  - Profile modal dashboard, rank tier progression bar, combat stats, and match history.
+  - Progression achievements rewarding match milestones and skill shot mastery.
+  - Dual backend parity across PostgreSQL and in-memory repositories.
 
 ### v1.9.0 — Social Multiplayer & Population Loop (MINOR)
 - **Objective**: Minimize human matchmaking drop-off and maximize community retention.

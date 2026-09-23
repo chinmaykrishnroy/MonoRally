@@ -27,6 +27,12 @@
             </div>
           </section>
           <div class="menuTools" aria-label="game tools">
+            <button id="profileBtn" class="iconBtn" aria-label="Player Profile & Ranked Stats" data-tooltip="View your rank tier, Elo, and combat stats">
+              <svg class="profileSvg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </button>
             <button id="settingsBtn" class="iconBtn" aria-label="Settings" data-tooltip="Adjust AI, touch controls, and sound">
               <svg class="gearSvg" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"></path>
@@ -181,6 +187,78 @@
             <input id="highContrastInput" type="checkbox">
             <span>High-contrast accessibility mode</span>
           </label>
+        </section>
+
+        <section class="modal hidden" id="profileModal" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+          <div class="modalHeader">
+            <h2 id="profileTitle">Player Profile</h2>
+            <button class="closeBtn" data-close-modal>Close</button>
+          </div>
+          <div class="profileContent">
+            <div class="profileHero">
+              <div class="profileBadgeIcon" id="profileBadgeIcon">SR</div>
+              <div class="profileHeroDetails">
+                <h3 id="profileDisplayName">swift-orbit</h3>
+                <span class="profileHandle" id="profileHandle">@swift-orbit</span>
+              </div>
+              <div class="profileTierPill" id="profileTierPill">SILVER</div>
+            </div>
+
+            <div class="profileEloCard">
+              <div class="eloHeader">
+                <div>
+                  <span class="eloLabel">Competitive Rating</span>
+                  <strong class="eloValue" id="profileEloValue">1200 Elo</strong>
+                </div>
+                <div class="peakElo" id="profilePeakElo">Peak: 1200</div>
+              </div>
+              <div class="tierProgressTrack">
+                <div class="tierProgressBar" id="profileTierProgressBar" style="width: 0%;"></div>
+              </div>
+              <div class="tierProgressMeta">
+                <span id="profileNextTierText">200 Elo to Gold</span>
+              </div>
+            </div>
+
+            <div class="statsGrid">
+              <div class="statCard">
+                <span class="statLabel">Matches</span>
+                <strong class="statVal" id="profileMatchesPlayed">0</strong>
+              </div>
+              <div class="statCard">
+                <span class="statLabel">Win Rate</span>
+                <strong class="statVal" id="profileWinRate">0%</strong>
+              </div>
+              <div class="statCard">
+                <span class="statLabel">Streak (Best)</span>
+                <strong class="statVal" id="profileStreak">0 (0)</strong>
+              </div>
+              <div class="statCard">
+                <span class="statLabel">Peak Speed</span>
+                <strong class="statVal" id="profilePeakSpeed">0 px/s</strong>
+              </div>
+            </div>
+
+            <div class="skillShotsSection">
+              <h4>Skill Shots Landed</h4>
+              <div class="skillPillsGrid">
+                <div class="skillPill smash"><span>💥 Smash</span><strong id="profileSmashCount">0</strong></div>
+                <div class="skillPill curve"><span>🌀 Curve</span><strong id="profileCurveCount">0</strong></div>
+                <div class="skillPill counter"><span>🛡️ Counter</span><strong id="profileCounterCount">0</strong></div>
+                <div class="skillPill drive"><span>⚡ Drive</span><strong id="profileDriveCount">0</strong></div>
+              </div>
+            </div>
+
+            <div class="profileSection">
+              <h4>Recent Matches</h4>
+              <div class="profileMatchHistory" id="profileMatchHistory"></div>
+            </div>
+
+            <div class="profileSection">
+              <h4>Combat Achievements</h4>
+              <div class="profileBadges" id="profileBadges"></div>
+            </div>
+          </div>
         </section>
 
         <section class="modal hidden" id="infoModal" role="dialog" aria-modal="true" aria-labelledby="infoTitle">

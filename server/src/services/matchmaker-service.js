@@ -127,6 +127,7 @@ export class MatchmakerService {
         name: p.name,
         teamPreference: p.teamPreference,
         sessionId: p.sessionId,
+        playerId: p.playerId,
         protocol: p.protocol
       }))
     };

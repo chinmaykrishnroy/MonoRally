@@ -8,6 +8,7 @@ export function createSettingsUi({ elements, state }) {
     infoModal,
     nameInput,
     overlay,
+    profileModal,
     quick1,
     quick2,
     quickStatus,
@@ -95,8 +96,13 @@ export function createSettingsUi({ elements, state }) {
     overlay.classList.remove("hidden");
     settingsModal.classList.toggle("hidden", which !== "settings");
     infoModal.classList.toggle("hidden", which !== "info");
+    if (profileModal) profileModal.classList.toggle("hidden", which !== "profile");
     document.body.classList.add("modal-open");
-    const focusTarget = which === "settings" ? settingsName : infoModal.querySelector("[data-close-modal]");
+    const focusTarget = which === "settings"
+      ? settingsName
+      : which === "profile"
+      ? profileModal?.querySelector("[data-close-modal]")
+      : infoModal.querySelector("[data-close-modal]");
     requestAnimationFrame(() => focusTarget?.focus?.());
   }
 
@@ -104,6 +110,7 @@ export function createSettingsUi({ elements, state }) {
     overlay.classList.add("hidden");
     settingsModal.classList.add("hidden");
     infoModal.classList.add("hidden");
+    if (profileModal) profileModal.classList.add("hidden");
     document.body.classList.remove("modal-open");
   }
 

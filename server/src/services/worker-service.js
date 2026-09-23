@@ -29,6 +29,7 @@ import {
 import { canReplayRoom, createRoomLifecycle } from "../room-lifecycle.js";
 import { jsonState, scoredStatePacket } from "../serialization.js";
 import { clamp, generatedName, rand, requestedTeam, startingXForSlot } from "../utils.js";
+import { finalizeMatch } from "../match-finalizer.js";
 
 /**
  * WorkerService
@@ -40,6 +41,7 @@ export class WorkerService {
     bus,
     workerRegistry,
     leaderboardRepository,
+    playerRepository,
     matchRepository,
     workerId = `worker-${Math.random().toString(36).slice(2, 8)}`,
     maxRooms = WORKER_CAPACITY_MAX_ROOMS
@@ -47,6 +49,7 @@ export class WorkerService {
     this.bus = bus;
     this.workerRegistry = workerRegistry;
     this.leaderboard = leaderboardRepository;
+    this.playerRepository = playerRepository;
     this.matchRepository = matchRepository;
     this.workerId = workerId;
     this.maxRooms = maxRooms;
@@ -323,7 +326,7 @@ export class WorkerService {
         return;
       }
 
-      this.addPlayer(room, { clientId, gatewayId, name, sessionId, teamPreference, protocol });
+      this.addPlayer(room, { clientId, gatewayId, name, sessionId, playerId: data.playerId, teamPreference, protocol });
     }
 
     if (room.players.length === room.maxPlayers && this.canStartRoom(room)) {
@@ -414,6 +417,7 @@ export class WorkerService {
       gatewayId: client.gatewayId,
       name: client.name,
       sessionId: client.sessionId,
+      profileId: client.playerId || client.profileId || null,
       team,
       slot,
       disconnected: false,
@@ -561,8 +565,11 @@ export class WorkerService {
     room.pendingCountdown = false;
     room.nextPublishAt = 0;
 
-    if (this.leaderboard) this.leaderboard.recordRoom(room);
-    if (this.matchRepository) this.matchRepository.recordMatch(room);
+    finalizeMatch(room, {
+      leaderboard: this.leaderboard,
+      playerRepository: this.playerRepository,
+      matchRepository: this.matchRepository
+    });
   }
 
   tick() {
@@ -618,8 +625,11 @@ export class WorkerService {
 
     advanceBalls(room, now, dt);
     checkWin(room, now);
-    if (this.leaderboard) this.leaderboard.recordRoom(room);
-    if (this.matchRepository) this.matchRepository.recordMatch(room);
+    finalizeMatch(room, {
+      leaderboard: this.leaderboard,
+      playerRepository: this.playerRepository,
+      matchRepository: this.matchRepository
+    });
 
     if (room.status === "running" && room.pendingCountdown && room.balls.length === 0) {
       beginCountdown(room, now, room.mode === "2v2" ? "both" : room.lastMissTeam || "top");

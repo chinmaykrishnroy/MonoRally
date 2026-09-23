@@ -307,6 +307,12 @@ function applyPaddleBounce(room, player, ball, now, hitX, center, paddleVelocity
   ball.pendingMiss = null;
   ball.paddleApproach = null;
   ball.bump = now;
+  room.peakSpeed = Math.max(room.peakSpeed || 0, speed);
+  if (!player.skillShots) player.skillShots = { smash: 0, curve: 0, counter: 0, drive: 0 };
+  if (shotType && player.skillShots[shotType] !== undefined) {
+    player.skillShots[shotType] += 1;
+  }
+
   room.lastHit = {
     x: ball.x,
     y: player.team === "top" ? 28 : H - 28,

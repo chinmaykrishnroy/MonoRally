@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.8.0] - 2026-09-23
+
+### Highlights
+- Anonymous-First Player Profiles: Frictionless persistent identity stored locally and synced with backend repositories without requiring mandatory registration, email, or passwords.
+- Symmetrical Ranked Elo Rating Engine: Server-authoritative Elo system ($K=32$) computing expected matchup scores and rating exchanges strictly for competitive human encounters.
+- Six-Tier Rank Progression: Bronze (<1200), Silver (1200–1399), Gold (1400–1599), Platinum (1600–1799), Diamond (1800–1999), and Master (2000+) tiers with dynamic badge styling and progression progress bars.
+- Profile Modal & Combat Statistics: Full dashboard showing Elo rating, peak rating, win rate %, win streaks, peak return speed, skill shot breakdown (Smash, Curve, Counter, Drive), and recent match history.
+- Milestone Achievements: Unlocked tokens celebrating competitive progression (Rookie Pilot, Rally Centurion, Gold Standard, Unstoppable Streak, Sonic Boomer, Smash Specialist).
+- Dual Backend Parity: Full schema migration and ranked leaderboard querying supported seamlessly across PostgreSQL (`002_player_profiles_and_ratings.sql`) and in-memory repository fallbacks.
+
+### Added
+- Symmetrical Elo rating engine in `server/src/elo.js` with pure mathematical calculation and tier assignment.
+- Database migration `server/src/db/migrations/002_player_profiles_and_ratings.sql` adding ratings, streaks, and skill shot counters.
+- Profile stats updates, match history persistence, and ranked leaderboard queries in `server/src/repositories/player-repository.js` and `server/src/repositories/match-repository.js`.
+- Unified match finalizer in `server/src/match-finalizer.js` linking match completion, human Elo delta calculation, and leaderboard updates.
+- REST endpoints `POST /api/profile`, `GET /api/profile`, and `GET /api/ranked/leaderboard` in `server/src/http.js`.
+- Player profile client modules `client/src/core/profile.js` and `client/src/ui/profile-ui.js`.
+- Profile UI markup in `client/public/index.html` and sleek cyberpunk dashboard styles in `client/public/styles.css`.
+- Comprehensive unit tests in `tests/unit/elo.test.js`, `tests/unit/player-repository.test.js`, and `tests/unit/profile-ui.test.js`.
+- End-to-end Playwright browser test verifying profile modal opening and display.
+
+### Changed
+- `hello` messages and room join/creation messages now forward client `playerId` for persistent stats attribution.
+- In-memory repository stores match records and computes ranked leaderboards with exact parity to PostgreSQL.
+
 ## [v1.7.0] - 2026-09-23
 
 ### Highlights

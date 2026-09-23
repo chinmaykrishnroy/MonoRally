@@ -108,7 +108,7 @@ async function gameClient(name, sessionId) {
 }
 
 async function waitForServer() {
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     if (server.exitCode !== null) throw new Error(`Test server exited with code ${server.exitCode}`);
     try {

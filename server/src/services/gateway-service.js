@@ -168,6 +168,7 @@ export class GatewayService {
       client.teamPreference = requestedTeam(msg.name);
       client.name = cleanName(msg.name);
       client.sessionId = cleanSession(msg.sessionId);
+      client.playerId = String(msg.playerId || "").trim() || null;
       client.protocol = Math.max(1, Math.min(4, Number(msg.protocol) || 1));
       send(client, { t: "hello", id: client.id, name: client.name, port: this.port, protocol: client.protocol });
       return;
@@ -295,6 +296,7 @@ export class GatewayService {
       name: client.name,
       teamPreference: client.teamPreference,
       sessionId: client.sessionId,
+      playerId: client.playerId,
       protocol: client.protocol
     });
   }
@@ -323,6 +325,7 @@ export class GatewayService {
           gatewayId: this.gatewayId,
           name: client.name,
           sessionId: client.sessionId,
+          playerId: client.playerId,
           teamPreference: client.teamPreference,
           protocol: client.protocol,
           spectator: false
@@ -344,6 +347,7 @@ export class GatewayService {
       gatewayId: this.gatewayId,
       name: client.name,
       sessionId: client.sessionId,
+      playerId: client.playerId,
       teamPreference: client.teamPreference,
       protocol: client.protocol,
       spectator

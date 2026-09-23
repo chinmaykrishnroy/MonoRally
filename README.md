@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.7.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.7.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.8.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.8.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -137,16 +137,16 @@ kubectl apply -f deploy/k3s/autoscaling.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.7.0`, MonoRally delivers distinctive gameplay identity, skill shot execution, overdrive powerups, and procedural Web Audio synthesis:
-- **Skill Shot System**: Dynamic server-authoritative physics classification identifying **Smash** ($1.35\times$ acceleration boost), **Curve** (wicked $\pm 1400\text{ px/s}^2$ Magnus spin), **Counter / Parry** (redirected momentum off fast incoming balls), and **Drive** (laser-flat trajectory on centered contact).
-- **Overdrive Powerup**: Collect the rare Overdrive orb to charge your paddle with glowing cyber emerald energy, instantly supercharging every return into an amplified Smash for 5 seconds.
-- **Skill Shot Feedback**: Real-time on-court floating typography badges (`SMASH!`, `CURVE!`, `COUNTER!`, `DRIVE!`) and dynamic camera/rumble feedback.
-- **Procedural Synthesizer Audio**: Zero-asset, zero-latency Web Audio oscillator synthesis generating custom sonic signatures for each skill shot and powerup activation without audio download overhead.
-- **Accent Color Themes & Accessibility**: Full custom palette support (Neon Cyan, Solar Amber, Cyber Emerald, Plasma Violet, Classic Monochrome) and high-contrast accessibility mode with dynamic contrast borders.
+As of `v1.8.0`, MonoRally introduces player profiles, competitive ranked matchmaking, and progression retention:
+- **Anonymous-First Player Identity**: Persistent anonymous UUID saved locally and synchronized seamlessly with server repositories—zero forced passwords or email barriers.
+- **Authoritative Symmetrical Elo Engine**: True Elo calculation ($K=32$) applied strictly to competitive human matchups, featuring six tiered ranks: Bronze (<1200), Silver (1200–1399), Gold (1400–1599), Platinum (1600–1799), Diamond (1800–1999), and Master (2000+).
+- **Player Profile Modal & HUD**: Dynamic profile dashboard detailing Elo progression bar, win rate %, win streaks, peak ball speed recorded, and skill shot breakdown (smash, curve, counter, drive counts).
+- **Achievements & Badges**: Progressive milestone tokens rewarding competitive mastery (Rookie Pilot, Rally Centurion, Gold Standard, Unstoppable Streak, Sonic Boomer, and Skill Specialists).
+- **Distinctive Gameplay & Skill Shots**: Dynamic server-authoritative physics classification identifying **Smash** ($1.35\times$ boost), **Curve** ($\pm 1400\text{ px/s}^2$ Magnus spin), **Counter / Parry**, and **Drive**, coupled with Overdrive powerups and procedural synthesizer audio.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.7.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.8.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 
