@@ -1,4 +1,4 @@
-const CACHE = "monorally-v1.12.0";
+const CACHE = "monorally-v1.12.1";
 const ASSETS = [
   "/",
   "/index.html",
@@ -22,6 +22,7 @@ const ASSETS = [
   "/src/replay/replay-recorder.js",
   "/src/replay/replay-player.js",
   "/src/replay/replay-store.js",
+  "/src/replay/replay-hud.js",
   "/src/ui/audio.js",
   "/src/ui/dom.js",
   "/src/ui/error-ui.js",

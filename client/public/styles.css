@@ -1590,39 +1590,55 @@ body.game-active.court-side-rail .status {
 }
 
 /* ==========================================================================
-   Replay HUD & Interactive Controls (v1.10.0)
+   Replay HUD & Interactive Controls (v1.10.0 / v1.12.0)
    ========================================================================== */
+
+body.is-replaying .hud,
+body.is-replaying .status,
+body.is-replaying .controlCoach,
+body.is-replaying .spectatorBar {
+  display: none !important;
+}
 
 .replayHud {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 0;
+  inset: 0;
   pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 16px;
   z-index: 40;
+  transition: opacity 0.25s ease;
 }
 
 .replayHud.hidden {
   display: none !important;
 }
 
+.replayHud.controls-hidden {
+  opacity: 0;
+  pointer-events: none !important;
+}
+
+.replayHud.idle-faded .replayHeader:not(:hover),
+.replayHud.idle-faded .replayControls:not(:hover):not(.is-dragging) {
+  opacity: 0.25;
+  transition: opacity 0.6s ease;
+}
+
 .replayHeader {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
   pointer-events: auto;
-  align-self: center;
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: rgba(10, 15, 25, 0.85);
-  backdrop-filter: blur(8px);
+  gap: 10px;
+  background: rgba(10, 15, 25, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--line);
   padding: 6px 14px;
   border-radius: 999px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .replayBadge {
@@ -1659,19 +1675,100 @@ body.game-active.court-side-rail .status {
 }
 
 .replayControls {
+  position: absolute;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
   pointer-events: auto;
-  align-self: center;
-  width: 90%;
-  max-width: 680px;
-  background: rgba(10, 15, 25, 0.9);
-  backdrop-filter: blur(10px);
+  width: min(92vw, 680px);
+  background: rgba(10, 15, 25, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+  transition: opacity 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.replayControls.is-detached {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px var(--accent);
+}
+
+.replayControls.is-dragging {
+  cursor: grabbing !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 240, 255, 0.4);
+  transition: none !important;
+}
+
+.replayDragHandle {
+  cursor: grab;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+  letter-spacing: -1px;
+}
+
+.replayDragHandle:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.replayControls.minimized {
+  width: auto;
+  min-width: 0;
+  max-width: fit-content;
+  padding: 6px 12px;
+  gap: 8px;
+  border-radius: 999px;
+}
+
+.replayControls.minimized #replayScrubber,
+.replayControls.minimized .replaySpeedGroup,
+.replayControls.minimized #replayExportBtn {
+  display: none !important;
+}
+
+.replayMinimizeBtn,
+.replayDockBtn {
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .replayControls:not(.minimized) {
+    flex-wrap: wrap;
+    width: min(96vw, 440px);
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .replayControls:not(.minimized) #replayScrubber {
+    order: 10;
+    width: 100%;
+    flex-basis: 100%;
+    margin-top: 4px;
+  }
+
+  .replayControls:not(.minimized) .replayTime {
+    min-width: auto;
+    font-size: 0.72rem;
+  }
+
+  .replayControls:not(.minimized) .speedBtn {
+    padding: 3px 5px;
+    font-size: 0.68rem;
+  }
 }
 
 .replayPlayBtn {

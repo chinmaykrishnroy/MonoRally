@@ -11,6 +11,7 @@ import { createShareModalController } from "./sharing/share-modal.js";
 import { ReplayRecorder } from "./replay/replay-recorder.js";
 import { ReplayPlayer } from "./replay/replay-player.js";
 import { defaultReplayStore } from "./replay/replay-store.js";
+import { ReplayHudController } from "./replay/replay-hud.js";
 import { createAudio } from "./ui/audio.js";
 import { collectDom } from "./ui/dom.js";
 import { createErrorUi } from "./ui/error-ui.js";
@@ -127,14 +128,26 @@ const shareModal = createShareModalController({
   toastEl: elements.shareToast
 });
 
+const replayHudController = new ReplayHudController({
+  hudEl: elements.replayHud,
+  controlsEl: elements.replayControls,
+  dragHandleEl: elements.replayDragHandle,
+  minimizeBtn: elements.replayMinimizeBtn,
+  dockBtn: elements.replayDockBtn,
+  courtEl: elements.canvas,
+  replayPlayer: state.replayPlayer
+});
+
 function launchReplay(replay) {
   if (!replay || !replay.frames?.length) return;
   state.isReplaying = true;
+  document.body.classList.add("game-active", "is-replaying");
   state.replayPlayer.load(replay);
   if (elements.replayHud) elements.replayHud.classList.remove("hidden");
   if (elements.replayTitle) {
     elements.replayTitle.textContent = `${(replay.mode || "1v1").toUpperCase()} Replay`;
   }
+  replayHudController.onEnterReplay();
   elements.menu.classList.add("hidden");
   elements.playFlow.classList.add("hidden");
   elements.game.classList.remove("hidden");
@@ -145,8 +158,11 @@ function launchReplay(replay) {
 
 function exitReplay() {
   state.isReplaying = false;
+  document.body.classList.remove("is-replaying");
   state.replayPlayer.unload();
+  replayHudController.onExitReplay();
   if (elements.replayHud) elements.replayHud.classList.add("hidden");
+  renderer.resize();
   if (state.lastCompletedReplay && state.lastNetState?.status === "ended") {
     dom.matchResult?.classList.remove("hidden");
   } else {

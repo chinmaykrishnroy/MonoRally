@@ -188,7 +188,10 @@
             <span id="replayTitle" class="replayTitle">Match Replay</span>
             <button id="replayExitBtn" type="button" class="replaySmallBtn" aria-label="Exit Replay">Exit</button>
           </div>
-          <div class="replayControls">
+          <div id="replayControls" class="replayControls">
+            <div id="replayDragHandle" class="replayDragHandle" title="Drag to reposition controls" aria-label="Drag to reposition controls">
+              <span class="dragGrip" aria-hidden="true">⋮⋮</span>
+            </div>
             <button id="replayPlayPauseBtn" type="button" class="replayPlayBtn" aria-label="Play or Pause">⏸</button>
             <span id="replayTimeDisplay" class="replayTime">00:00 / 00:00</span>
             <input type="range" id="replayScrubber" min="0" max="1000" value="0" aria-label="Replay timeline scrubber">
@@ -198,6 +201,8 @@
               <button type="button" class="speedBtn" data-speed="2.0">2x</button>
             </div>
             <button id="replayExportBtn" type="button" class="replaySmallBtn" aria-label="Export Replay JSON" title="Download replay as .json">Export</button>
+            <button id="replayMinimizeBtn" type="button" class="replaySmallBtn replayMinimizeBtn" aria-label="Minimize or Expand Controls" title="Minimize controls">⤓</button>
+            <button id="replayDockBtn" type="button" class="replaySmallBtn replayDockBtn hidden" aria-label="Dock controls to bottom" title="Reset to docked position">⎘ Dock</button>
           </div>
         </div>
         <div class="controlCoach hidden" id="controlCoach" role="status">

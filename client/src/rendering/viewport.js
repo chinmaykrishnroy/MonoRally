@@ -66,11 +66,23 @@ export function createCourtViewport(ctx, usesMobileVisuals) {
     const sideRail = window.innerHeight >= 600 && fullHeightWidth <= pixelWidth && sideGutter >= 145;
     document.body.classList.toggle("court-side-rail", sideRail);
 
+    const isReplay = typeof document !== "undefined" && document.body?.classList?.contains("is-replaying");
+
     let availableX = 0;
     let availableY = 0;
     let availableWidth = pixelWidth;
     let availableHeight = pixelHeight;
-    if (!sideRail) {
+    if (isReplay) {
+      // In replay mode, leave generous clearance for top header and bottom playback controls
+      // so neither the top paddle nor bottom paddle is ever occluded!
+      const topClearance = Math.round(56 * dpr);
+      const bottomClearance = Math.round(86 * dpr);
+      const horizMargin = Math.round(12 * dpr);
+      availableX = horizMargin;
+      availableWidth = Math.max(1, pixelWidth - horizMargin * 2);
+      availableY = topClearance;
+      availableHeight = Math.max(1, pixelHeight - topClearance - bottomClearance);
+    } else if (!sideRail) {
       const hudRect = document.querySelector(".hud")?.getBoundingClientRect();
       const statusRect = document.querySelector(".status")?.getBoundingClientRect();
       const margin = 8 * dpr;
@@ -97,7 +109,7 @@ export function createCourtViewport(ctx, usesMobileVisuals) {
     viewport.height = height;
     viewport.scale = width / W;
     viewport.x = availableX + (availableWidth - width) / 2;
-    const topAlignForThumbControl = !sideRail && usesMobileVisuals() && window.innerHeight > window.innerWidth;
+    const topAlignForThumbControl = !isReplay && !sideRail && usesMobileVisuals() && window.innerHeight > window.innerWidth;
     viewport.y = topAlignForThumbControl ? availableY : availableY + (availableHeight - height) / 2;
   }
 

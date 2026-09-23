@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.12.1] - 2026-09-24
+
+### Highlights
+- Replay Paddle Visibility & Safe Viewport Clearance: Replay viewport computation now reserves generous vertical clearance for the top badge and playback controls, guaranteeing both top and bottom paddles remain 100% visible and unobstructed across all screen sizes.
+- Detachable & Draggable Playback Controls: Replay controls can now be detached and dragged freely across desktop and mobile screens via touch and mouse pointer events, clamped safely inside viewport margins with persistent position memory and one-click dock reset.
+- Compact / Minimize Mode: Added a minimize toggle (`⤓`/`⤒`) collapsing the playback toolbar into an ultra-compact floating pill to maximize screen visibility.
+- Auto-Fade & Canvas Tap Toggle: Playback controls automatically fade to subtle opacity during active playback after 2.5s of inactivity, restoring instantly on pointer activity. Tapping or clicking the canvas toggles HUD visibility on demand.
+- Clean Replay HUD Isolation: Completely hides conflicting live gameplay HUD elements during replay sessions, eliminating overlapping top/bottom bars on mobile and desktop.
+- Spectator Capacity Enforcement: Imported `MAX_SPECTATORS` in unified runtime and enforced spectator capacity in authoritative worker service.
+
 ## [v1.12.0] - 2026-09-24
 
 ### Highlights
