@@ -96,4 +96,25 @@ describe("Distributed Multi-Replica Data Integration", () => {
       mode: "1v1"
     });
   });
+
+  test("serves Prometheus text exposition and JSON telemetry metrics", async () => {
+    const [promRes, jsonRes] = await Promise.all([
+      fetch(`http://127.0.0.1:${PORT_A}/metrics`),
+      fetch(`http://127.0.0.1:${PORT_A}/metrics.json`)
+    ]);
+
+    expect(promRes.status).toBe(200);
+    expect(promRes.headers.get("content-type")).toContain("text/plain");
+    const promText = await promRes.text();
+    expect(promText).toContain("monorally_connected_clients");
+    expect(promText).toContain("monorally_process_resident_memory_bytes");
+
+    expect(jsonRes.status).toBe(200);
+    expect(jsonRes.headers.get("content-type")).toContain("application/json");
+    const jsonData = await jsonRes.json();
+    expect(jsonData).toHaveProperty("timestamp");
+    expect(jsonData).toHaveProperty("connections");
+    expect(jsonData).toHaveProperty("rooms");
+    expect(jsonData).toHaveProperty("resources");
+  });
 });

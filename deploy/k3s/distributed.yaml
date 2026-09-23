@@ -53,11 +53,22 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: monorally-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8787"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
           ports:
             - name: http
               containerPort: 8787
@@ -119,12 +130,23 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: monorally-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8787"
+        prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: worker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
           lifecycle:
             preStop:
               exec:
@@ -171,8 +193,15 @@ spec:
     spec:
       containers:
         - name: matchmaker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
           env:
             - name: SERVICE_ROLE
               value: "matchmaker"

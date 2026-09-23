@@ -32,6 +32,7 @@ import { clamp, generatedName, rand, requestedTeam, startingXForSlot } from "../
 import { finalizeMatch } from "../match-finalizer.js";
 import { evaluateRematchRequest, handlePlayerLeaveRematch } from "../rematch.js";
 import { validateCheer } from "../cheer.js";
+import { metrics } from "../metrics.js";
 
 /**
  * WorkerService
@@ -141,6 +142,13 @@ export class WorkerService {
   }
 
   async heartbeat() {
+    metrics.setWorkerCapacity(this.rooms.size, this.maxRooms);
+    const breakdown = { waiting: 0, countdown: 0, running: 0, ended: 0 };
+    for (const r of this.rooms.values()) {
+      if (breakdown[r.status] !== undefined) breakdown[r.status]++;
+    }
+    metrics.setActiveRooms(this.rooms.size, breakdown);
+
     await this.workerRegistry.registerWorkerHeartbeat(
       {
         workerId: this.workerId,
@@ -642,7 +650,8 @@ export class WorkerService {
 
   tickRoom(room) {
     if (!room.players.length && !room.spectators.length) return;
-    const now = performance.now();
+    const tickStart = performance.now();
+    const now = tickStart;
     const dt = Math.min(0.034, (now - room.lastTick) / 1000);
     room.lastTick = now;
 
@@ -651,14 +660,17 @@ export class WorkerService {
       if (this.draining || endedDuration > 15000) {
         this.rooms.delete(room.code);
         this.workerRegistry.releaseRoomLease(room.code, this.workerId);
+        metrics.recordTickDuration(performance.now() - tickStart);
         return;
       }
       this.publishState(room, now);
+      metrics.recordTickDuration(performance.now() - tickStart);
       return;
     }
 
     if (room.status !== "running") {
       this.publishState(room, now);
+      metrics.recordTickDuration(performance.now() - tickStart);
       return;
     }
 
@@ -700,5 +712,6 @@ export class WorkerService {
     }
 
     this.publishState(room, now);
+    metrics.recordTickDuration(performance.now() - tickStart);
   }
 }

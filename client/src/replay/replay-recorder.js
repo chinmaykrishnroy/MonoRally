@@ -3,6 +3,8 @@
  * Compact deterministic recording of match keyframes at ~15-20 Hz.
  */
 
+import { config } from "../core/shared.js";
+
 export class ReplayRecorder {
   constructor() {
     this.active = false;
@@ -25,7 +27,7 @@ export class ReplayRecorder {
     this.skillShots = { smash: 0, curve: 0, counter: 0, drive: 0 };
 
     this.replay = {
-      version: "1.10.0",
+      version: config.appVersion || "1.11.0",
       id: `rly_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       mode,
       missLimit,

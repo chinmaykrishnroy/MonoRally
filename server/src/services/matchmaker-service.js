@@ -1,4 +1,5 @@
 import { QUICK_MATCH_FALLBACK_MS } from "../config.js";
+import { metrics } from "../metrics.js";
 
 /**
  * MatchmakerService
@@ -64,18 +65,25 @@ export class MatchmakerService {
     const needed = mode === "2v2" ? 4 : 2;
     if (queue.length >= needed) {
       const matched = queue.splice(0, needed);
+      const now = Date.now();
       for (const p of matched) {
         this.clearPlayerTimer(p.clientId);
+        if (p.enqueuedAt) metrics.recordMatchmakerWait(now - p.enqueuedAt);
       }
+      metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
       this.dispatchMatch(mode, matched, false);
       return;
     }
+
+    metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
 
     const timer = setTimeout(() => {
       this.clearPlayerTimer(player.clientId);
       const idx = queue.findIndex((p) => p.clientId === player.clientId);
       if (idx !== -1) {
         const [timedOutPlayer] = queue.splice(idx, 1);
+        if (timedOutPlayer.enqueuedAt) metrics.recordMatchmakerWait(Date.now() - timedOutPlayer.enqueuedAt);
+        metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
         this.dispatchMatch(mode, [timedOutPlayer], true);
       }
     }, this.fallbackMs);
@@ -92,6 +100,7 @@ export class MatchmakerService {
         q.splice(idx, 1);
       }
     }
+    metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
   }
 
   clearPlayerTimer(clientId) {

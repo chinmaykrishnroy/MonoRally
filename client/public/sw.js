@@ -1,4 +1,4 @@
-const CACHE = "monorally-v1.10.0";
+const CACHE = "monorally-v1.11.0";
 const ASSETS = [
   "/",
   "/index.html",

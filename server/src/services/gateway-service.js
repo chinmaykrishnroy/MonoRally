@@ -11,6 +11,7 @@ import {
 import { epochNow } from "../input-timeline.js";
 import { cleanName, cleanSession, requestedTeam } from "../utils.js";
 import { closeClient, send, sendBinary, sendPing } from "../ws.js";
+import { metrics } from "../metrics.js";
 
 /**
  * GatewayService
@@ -105,6 +106,7 @@ export class GatewayService {
       closeClient(client, 1001, "gateway shutting down");
     }
     this.clients.clear();
+    metrics.setConnectedClients(0);
     for (const sub of this.subscriptions) {
       sub.unsubscribe();
     }
@@ -118,6 +120,7 @@ export class GatewayService {
     client.inputCount = 0;
     client.inputLimitedAt = 0;
     this.clients.set(client.id, client);
+    metrics.setConnectedClients(this.clients.size);
   }
 
   handleClientDisconnected(client) {
@@ -135,6 +138,7 @@ export class GatewayService {
     }
 
     this.clients.delete(client.id);
+    metrics.setConnectedClients(this.clients.size);
   }
 
   heartbeatClients() {

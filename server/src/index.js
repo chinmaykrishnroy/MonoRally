@@ -35,6 +35,7 @@ import { createHttpServer } from "./http.js";
 import { classifyInputSequence, epochNow, normalizeInputTime, recordInputSample } from "./input-timeline.js";
 import { emitNetworkTelemetry } from "./network-telemetry.js";
 import { createLeaderboard } from "./leaderboard.js";
+import { metrics } from "./metrics.js";
 import {
   advanceBalls,
   advancePaddles,
@@ -142,9 +143,19 @@ const physicsTimer = setInterval(() => {
   for (const room of rooms.values()) tickRoom(room);
 }, TICK);
 
+function updateMetrics() {
+  metrics.setConnectedClients(clients.size);
+  const breakdown = { waiting: 0, countdown: 0, running: 0, ended: 0 };
+  for (const r of rooms.values()) {
+    if (breakdown[r.status] !== undefined) breakdown[r.status]++;
+  }
+  metrics.setActiveRooms(rooms.size, breakdown);
+}
+
 const directoryTimer = setInterval(() => {
   broadcastRooms();
   pruneRooms();
+  updateMetrics();
 }, 1000);
 
 const heartbeatTimer = setInterval(() => {
@@ -757,12 +768,14 @@ function endRoomByPresence(room, winner) {
 
 function tickRoom(room) {
   if (!room.players.length && !room.spectators.length) return;
-  const now = performance.now();
+  const tickStart = performance.now();
+  const now = tickStart;
   const dt = Math.min(0.034, (now - room.lastTick) / 1000);
   room.lastTick = now;
 
   if (room.status !== "running") {
     publishState(room, now);
+    metrics.recordTickDuration(performance.now() - tickStart);
     return;
   }
 
@@ -800,6 +813,7 @@ function tickRoom(room) {
     room.lastMissTeam = null;
   }
   publishState(room, now);
+  metrics.recordTickDuration(performance.now() - tickStart);
 }
 
 function clearRoomTimer(room) {

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { ALLOWED_ORIGINS, PORT } from "./config.js";
 import { handleFrames, send } from "./ws.js";
+import { metrics } from "./metrics.js";
 
 export function attachWebSocketServer(server, { broadcastRooms, clients, onBinary, onDisconnect, onMessage }) {
   server.on("upgrade", (req, socket) => {
@@ -56,6 +57,7 @@ export function attachWebSocketServer(server, { broadcastRooms, clients, onBinar
       alive: true
     };
     clients.set(client.id, client);
+    metrics.setConnectedClients(clients.size);
     send(client, { t: "hello", id: client.id, port: PORT });
     broadcastRooms();
 
@@ -66,7 +68,11 @@ export function attachWebSocketServer(server, { broadcastRooms, clients, onBinar
         onError: (target, message, details = {}) => send(target, { t: "error", message, ...details })
       })
     );
-    socket.on("close", () => onDisconnect(client));
-    socket.on("error", () => onDisconnect(client));
+    const handleDisconnect = () => {
+      onDisconnect(client);
+      metrics.setConnectedClients(clients.size);
+    };
+    socket.on("close", handleDisconnect);
+    socket.on("error", handleDisconnect);
   });
 }

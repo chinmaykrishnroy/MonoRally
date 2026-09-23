@@ -9,11 +9,11 @@ let server;
 beforeAll(async () => {
   server = spawn(process.execPath, ["server/src/index.js"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(PORT), QUICK_MATCH_FALLBACK_MS: "5000" },
+    env: { ...process.env, PORT: String(PORT), QUICK_MATCH_FALLBACK_MS: "5000", DATA_BACKEND: "memory", BUS_TYPE: "memory", DATABASE_URL: "", REDIS_URL: "" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   await waitForServer();
-});
+}, 30000);
 
 afterAll(async () => {
   if (!server || server.exitCode !== null) return;

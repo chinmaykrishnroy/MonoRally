@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ALLOWED_ORIGINS, publicConfig } from "./config.js";
+import { metrics } from "./metrics.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../../client/public");
@@ -106,6 +107,24 @@ export function createHttpServer({ checkHealth, leaderboard, playerRepository, m
           });
           res.end(JSON.stringify({ ready: false, error: err.message }));
         });
+      return;
+    }
+
+    if (requested === "/metrics" || requested === "/metrics.json" || requested === "/api/metrics") {
+      const acceptsJson = requested.endsWith(".json") || requested.startsWith("/api/") || (req.headers.accept && req.headers.accept.includes("application/json"));
+      if (acceptsJson) {
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store"
+        });
+        res.end(JSON.stringify(metrics.getSnapshot()));
+      } else {
+        res.writeHead(200, {
+          "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
+          "Cache-Control": "no-store"
+        });
+        res.end(metrics.formatPrometheus());
+      }
       return;
     }
 

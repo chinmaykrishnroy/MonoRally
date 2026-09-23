@@ -1,4 +1,5 @@
 import { calculateMatchElo } from "./elo.js";
+import { metrics } from "./metrics.js";
 
 /**
  * Finalizes ended matches, updates player stats, calculates Elo adjustments,
@@ -7,6 +8,7 @@ import { calculateMatchElo } from "./elo.js";
 export async function finalizeMatch(room, { leaderboard = null, playerRepository = null, matchRepository = null } = {}) {
   if (!room || room.status !== "ended" || !room.winner || room.matchFinalized) return;
   room.matchFinalized = true;
+  metrics.incrementMatchCompleted();
 
   if (leaderboard) {
     try {

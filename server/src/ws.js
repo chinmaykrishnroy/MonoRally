@@ -1,4 +1,5 @@
 import { WEBSOCKET_MAX_MESSAGE_BYTES } from "./config.js";
+import { metrics } from "./metrics.js";
 
 export function handleFrames(client, chunk, { onBinary, onMessage, onError }) {
   client.lastSeen = performance.now();
@@ -60,6 +61,10 @@ export function handleFrames(client, chunk, { onBinary, onMessage, onError }) {
     }
     if (opcode === 10) {
       if (!fin || length > 125) return closeClient(client, 1002, "invalid control frame");
+      if (client.lastPingSentAt) {
+        const rtt = performance.now() - client.lastPingSentAt;
+        if (Number.isFinite(rtt) && rtt >= 0) metrics.recordClientRtt(rtt);
+      }
       client.lastPong = performance.now();
       continue;
     }
@@ -93,6 +98,7 @@ export function handleFrames(client, chunk, { onBinary, onMessage, onError }) {
 
 function dispatchMessage(client, opcode, data, { onBinary, onMessage, onError }) {
   if (opcode === 2) {
+    metrics.recordMessage("binary", "in");
     try {
       onBinary(client, data);
     } catch (error) {
@@ -102,6 +108,7 @@ function dispatchMessage(client, opcode, data, { onBinary, onMessage, onError })
     }
     return;
   }
+  metrics.recordMessage("text", "in");
   let message;
   try {
     message = JSON.parse(data.toString("utf8"));
@@ -156,22 +163,29 @@ export function writeFrame(socket, payload, opcode = 1) {
 }
 
 export function send(client, message) {
+  metrics.recordMessage("text", "out");
   writeFrame(client.socket, Buffer.from(JSON.stringify(message)));
 }
 
 export function sendBinary(client, payload) {
+  metrics.recordMessage("binary", "out");
   writeFrame(client.socket, payload, 2);
 }
 
 export function sendPing(client) {
+  client.lastPingSentAt = performance.now();
   writeFrame(client.socket, Buffer.alloc(0), 9);
 }
 
 export function broadcast(clientsToSend, message) {
+  const count = clientsToSend.length || (typeof clientsToSend.size === "number" ? clientsToSend.size : 0);
+  if (count > 0) metrics.recordMessage("text", "out", count);
   const payload = Buffer.from(JSON.stringify(message));
   for (const client of clientsToSend) writeFrame(client.socket, payload);
 }
 
 export function broadcastBinary(clientsToSend, payload) {
+  const count = clientsToSend.length || (typeof clientsToSend.size === "number" ? clientsToSend.size : 0);
+  if (count > 0) metrics.recordMessage("binary", "out", count);
   for (const client of clientsToSend) sendBinary(client, payload);
 }

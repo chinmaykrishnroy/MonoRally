@@ -18,11 +18,22 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: monorally
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8787"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: monorally
-          image: ghcr.io/chinmaykrishnroy/monorally:1.10.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
           ports:
             - name: http
               containerPort: 8787
