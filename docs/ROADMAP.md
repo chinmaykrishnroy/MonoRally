@@ -16,8 +16,8 @@ This document outlines the architectural and product milestones transitioning Mo
 | **v1.6.0** | Complete | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |
 | **v1.7.0** | Complete | Distinctive Gameplay Identity | Signature skill shots (smash, curve, counter, drive), overdrive powerup, procedural audio |
 | **v1.8.0** | Complete | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests, achievements |
-| **v1.10.0** | Complete | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |
-| **v1.11.0** | Current Release | Large-Scale Validation & Hardening | Synthetic load tests (up to 200 replicas), Prometheus metrics, capacity runbook |
+| **v1.11.0** | Complete | Large-Scale Validation & Hardening | Synthetic load tests (up to 200 replicas), Prometheus metrics, capacity runbook |
+| **v1.12.0** | Current Release | Distributed Correctness & Isolation | Explicit SERVICE_ROLE separation, O(1) partitioned routing, atomic matchmaking, fail-closed production |
 
 ---
 
@@ -92,9 +92,19 @@ This document outlines the architectural and product milestones transitioning Mo
   - Rich OpenGraph & SEO Metadata: Complete social preview meta cards (`og:title`, `og:description`, `og:image`, `twitter:card`), dedicated 1200×630 cyberpunk social card (`/og-image.png`), `VideoGame` JSON-LD structured data, enhanced PWA web manifest shortcuts, and offline service worker caching.
 
 ### v1.11.0 — Large-Scale Validation & Hardening (MINOR)
-- **Objective**: Operational certification for 200+ container replicas hosting 10,000+ concurrent courts.
+- **Objective**: Multi-replica scale architecture supporting configurable worker autoscaling up to 200 replicas; production capacity remains subject to measured infrastructure-specific load testing.
 - **Key Deliverables**:
   - Synthetic multi-replica load benchmarks across increasing scales (`scripts/scale-benchmark.js`, `npm run test:scale`) verifying 60 Hz input packet streams and sub-16.6ms physics tick deadlines.
   - Prometheus 0.0.4 exposition format (`/metrics`) and JSON telemetry (`/metrics.json`) with zero-allocation rolling reservoir percentiles (p50, p90, p95, p99) for tick durations, client RTT, and matchmaking queue times.
   - Kubernetes HorizontalPodAutoscalers (`deploy/k3s/hpa.yaml`) scaling workers up to 200 pods with 300-second scale-down stabilization, and PodDisruptionBudgets (`deploy/k3s/pdb.yaml`).
   - Operational Capacity Runbook (`docs/RUNBOOK_CAPACITY_SCALE.md`) with mathematical bandwidth, memory, and CPU sizing models from 100 CCU to 20,000 CCU, PromQL alerting rules, and incident playbooks.
+
+### v1.12.0 — Distributed Correctness & Isolation (MINOR)
+- **Objective**: Genuine horizontal scalability through isolated service roles, partitioned O(1) messaging, atomic matchmaking, and fail-closed production backends.
+- **Key Deliverables**:
+  - Explicit `SERVICE_ROLE` runtime component separation (`gateway`, `worker`, `matchmaker`, `unified`) preventing physics from running on gateways or public player WebSockets on workers.
+  - Partitioned input routing (`worker.<workerId>.room.<roomId>.input`) and targeted snapshot routing (`gateway.<gatewayId>.room.<roomId>.snapshot`), eliminating global NATS fan-out.
+  - Redis-backed atomic matchmaking queue (`RedisMatchmakingQueue`) with atomic Lua script group claiming and NATS queue group load balancing (`{ queue: "matchmakers" }`).
+  - Production fail-closed validation guaranteeing missing Redis/NATS/Postgres configurations abort startup immediately rather than silently falling back to in-memory mocks.
+  - Database migration lifecycle guarantees: startup fails readiness if migrations fail, standalone CLI runner (`scripts/migrate.js`), and Kubernetes Job (`deploy/k3s/migration-job.yaml`).
+  - Real sampled tick measurements and dynamic SLO verification in scale benchmark harness.

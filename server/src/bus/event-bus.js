@@ -17,9 +17,10 @@ export class EventBus {
    * Subscribes to a subject or wildcard pattern.
    * @param {string} subject - Subject pattern ('*' matches single token, '>' matches multi token)
    * @param {function(data: Uint8Array|object|string, replyTo?: string, subject?: string): void} handler
+   * @param {object} [options] - Subscription options (e.g. { queue: 'queue-group' })
    * @returns {Promise<{ unsubscribe: function(): void }>}
    */
-  async subscribe(subject, handler) {
+  async subscribe(subject, handler, options = {}) {
     throw new Error("subscribe() not implemented");
   }
 

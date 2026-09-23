@@ -54,8 +54,8 @@ describe("Resilience & Chaos Testing", () => {
     worker1 = new WorkerService({ bus, workerRegistry, workerId: "worker-1", maxRooms: 10 });
     worker2 = new WorkerService({ bus, workerRegistry, workerId: "worker-2", maxRooms: 10 });
 
-    gateway1 = new GatewayService({ bus, gatewayId: "gateway-1" });
-    gateway2 = new GatewayService({ bus, gatewayId: "gateway-2" });
+    gateway1 = new GatewayService({ bus, workerRegistry, gatewayId: "gateway-1" });
+    gateway2 = new GatewayService({ bus, workerRegistry, gatewayId: "gateway-2" });
 
     await matchmaker.start();
     await worker1.start();

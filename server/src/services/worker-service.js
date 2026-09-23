@@ -33,6 +33,7 @@ import { finalizeMatch } from "../match-finalizer.js";
 import { evaluateRematchRequest, handlePlayerLeaveRematch } from "../rematch.js";
 import { validateCheer } from "../cheer.js";
 import { metrics } from "../metrics.js";
+import { MemoryWorkerRegistry } from "../redis/worker-registry.js";
 
 /**
  * WorkerService
@@ -43,6 +44,7 @@ export class WorkerService {
   constructor({
     bus,
     workerRegistry,
+    roomDirectory = null,
     leaderboardRepository,
     playerRepository,
     matchRepository,
@@ -50,7 +52,8 @@ export class WorkerService {
     maxRooms = WORKER_CAPACITY_MAX_ROOMS
   }) {
     this.bus = bus;
-    this.workerRegistry = workerRegistry;
+    this.workerRegistry = workerRegistry || new MemoryWorkerRegistry();
+    this.roomDirectory = roomDirectory;
     this.leaderboard = leaderboardRepository;
     this.playerRepository = playerRepository;
     this.matchRepository = matchRepository;
@@ -59,6 +62,8 @@ export class WorkerService {
 
     this.rooms = new Map();
     this.draining = false;
+    this.messagesDelivered = 0;
+    this.messagesConsumed = 0;
     this.stateMechanics = { countdownValue, empStrength, laserStrength, overdriveStrength, paddleWidth };
     const lifecycle = createRoomLifecycle(this.rooms);
     this.makeRoom = lifecycle.makeRoom;
@@ -68,6 +73,7 @@ export class WorkerService {
     this.heartbeatTimer = null;
     this.leaseTimer = null;
     this.subscriptions = [];
+    this.tickSamples = [];
   }
 
   async start() {
@@ -80,25 +86,29 @@ export class WorkerService {
       })
     );
 
-    // 2. Subscribe to room input stream
+    // 2. Subscribe to targeted room input stream (authoritative worker only)
     this.subscriptions.push(
-      await this.bus.subscribe("room.*.input", (data, replyTo, subject) => {
+      await this.bus.subscribe(`worker.${this.workerId}.room.*.input`, (data, replyTo, subject) => {
+        this.messagesDelivered++;
         const parts = subject.split(".");
-        const roomCode = parts[1];
+        const roomCode = parts[3];
         const room = this.rooms.get(roomCode);
         if (room) {
+          this.messagesConsumed++;
           this.handleRoomInput(room, data);
         }
       })
     );
 
-    // 3. Subscribe to room commands (join, leave, selectSlot, fillAi, replayRoom)
+    // 3. Subscribe to targeted room commands (authoritative worker only)
     this.subscriptions.push(
-      await this.bus.subscribe("room.*.command", async (data, replyTo, subject) => {
+      await this.bus.subscribe(`worker.${this.workerId}.room.*.command`, async (data, replyTo, subject) => {
+        this.messagesDelivered++;
         const parts = subject.split(".");
-        const roomCode = parts[1];
+        const roomCode = parts[3];
         const room = this.rooms.get(roomCode);
         if (room) {
+          this.messagesConsumed++;
           await this.handleRoomCommand(room, data);
         }
       })
@@ -323,19 +333,22 @@ export class WorkerService {
         role: "spectator"
       });
     } else {
-      if (room.status === "running") {
-        this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
-          t: "error",
-          message: "Match already running"
-        });
-        return;
-      }
-      if (room.players.length >= room.maxPlayers) {
-        this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
-          t: "error",
-          message: "Room is full"
-        });
-        return;
+      const canResume = Boolean(sessionId && room.players.some((p) => p.sessionId === sessionId && p.disconnected));
+      if (!canResume) {
+        if (room.status === "running") {
+          this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
+            t: "error",
+            message: "Match already running"
+          });
+          return;
+        }
+        if (room.players.length >= room.maxPlayers) {
+          this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
+            t: "error",
+            message: "Room is full"
+          });
+          return;
+        }
       }
 
       this.addPlayer(room, { clientId, gatewayId, name, sessionId, playerId: data.playerId, teamPreference, protocol });
@@ -350,9 +363,19 @@ export class WorkerService {
   }
 
   handleLeave(room, clientId) {
+    const player = room.players.find((p) => p.clientId === clientId);
+    if (player && room.status === "running" && player.sessionId) {
+      player.disconnected = true;
+      player.disconnectedAt = performance.now();
+      player.clientId = null;
+      this.broadcastRoster(room);
+      this.publishState(room, performance.now(), true);
+      return;
+    }
+
     const declined = handlePlayerLeaveRematch(room, clientId);
     if (declined) {
-      this.bus.publish(`room.${room.code}.events`, {
+      this.broadcastRoomEvent(room, {
         t: "rematchDeclined",
         code: room.code,
         message: "A player left the room."
@@ -424,7 +447,7 @@ export class WorkerService {
     if (!res.ok) return;
 
     if (!res.immediate) {
-      this.bus.publish(`room.${room.code}.events`, {
+      this.broadcastRoomEvent(room, {
         t: "rematchStatus",
         code: room.code,
         acceptedBy: player.name,
@@ -438,7 +461,7 @@ export class WorkerService {
           if (!room) return;
           room.rematchConsent?.clear();
           room.rematchTimer = null;
-          this.bus.publish(`room.${room.code}.events`, {
+          this.broadcastRoomEvent(room, {
             t: "rematchExpired",
             code: room.code,
             message: "Rematch request expired."
@@ -454,7 +477,7 @@ export class WorkerService {
     }
     room.replayStarting = true;
     this.startRoom(room);
-    this.bus.publish(`room.${room.code}.events`, { t: "replayStarted", code: room.code, mode: room.mode });
+    this.broadcastRoomEvent(room, { t: "replayStarted", code: room.code, mode: room.mode });
     this.publishState(room, performance.now(), true);
     room.replayStarting = false;
   }
@@ -466,7 +489,7 @@ export class WorkerService {
     const now = performance.now();
     this.clientCheerTimes.set(clientId, now);
 
-    this.bus.publish(`room.${room.code}.events`, {
+    this.broadcastRoomEvent(room, {
       t: "cheer",
       code: room.code,
       emoji,
@@ -476,6 +499,30 @@ export class WorkerService {
   }
 
   addPlayer(room, client, assignment = null) {
+    const existingPlayer = client.sessionId
+      ? room.players.find((p) => p.sessionId === client.sessionId && p.disconnected)
+      : null;
+
+    if (existingPlayer) {
+      existingPlayer.disconnected = false;
+      existingPlayer.disconnectedAt = 0;
+      existingPlayer.clientId = client.clientId;
+      existingPlayer.id = client.clientId;
+      existingPlayer.gatewayId = client.gatewayId;
+      if (client.name) existingPlayer.name = client.name;
+
+      this.bus.publish(`gateway.${client.gatewayId}.client.${client.clientId}.send`, {
+        t: "joined",
+        code: room.code,
+        mode: room.mode,
+        role: "player",
+        slot: existingPlayer.slot,
+        team: existingPlayer.team,
+        resumed: true
+      });
+      return;
+    }
+
     const joinSlot = room.players.length;
     const slot = assignment?.slot ?? (room.mode === "2v2" ? -1 : joinSlot);
     const team = assignment?.team ?? (room.mode === "2v2" ? null : this.chooseTeam(room, client, joinSlot));
@@ -588,6 +635,28 @@ export class WorkerService {
     return W * (this.teamCount(room, team) === 0 ? 0.42 : 0.58);
   }
 
+  getParticipatingGatewayIds(room) {
+    const ids = new Set();
+    if (room.players) {
+      for (const p of room.players) {
+        if (p.gatewayId && !p.disconnected) ids.add(p.gatewayId);
+      }
+    }
+    if (room.spectators) {
+      for (const s of room.spectators) {
+        if (s.gatewayId) ids.add(s.gatewayId);
+      }
+    }
+    return ids;
+  }
+
+  broadcastRoomEvent(room, eventData) {
+    const gatewayIds = this.getParticipatingGatewayIds(room);
+    for (const gid of gatewayIds) {
+      this.bus.publish(`gateway.${gid}.room.${room.code}.events`, eventData);
+    }
+  }
+
   broadcastRoster(room) {
     const message = {
       t: "roster",
@@ -601,16 +670,19 @@ export class WorkerService {
         score: p.returns || 0
       }))
     };
-    this.bus.publish(`room.${room.code}.events`, message);
+    this.broadcastRoomEvent(room, message);
   }
 
   publishState(room, now, force = false) {
     if (!force && now < room.nextPublishAt) return;
     room.nextPublishAt = now + (room.status === "running" ? 1000 / NETWORK_HZ : 500);
 
-    // Fast zero-overhead binary snapshot stream
+    // Fast zero-overhead binary snapshot stream targeted only to participating gateways
     const binary = scoredStatePacket(room, now, this.stateMechanics);
-    this.bus.publish(`room.${room.code}.snapshots`, binary);
+    const gatewayIds = this.getParticipatingGatewayIds(room);
+    for (const gid of gatewayIds) {
+      this.bus.publish(`gateway.${gid}.room.${room.code}.snapshot`, binary);
+    }
   }
 
   checkPresenceWin(room) {
@@ -642,6 +714,17 @@ export class WorkerService {
     });
   }
 
+  recordTick(duration) {
+    if (this.tickSamples.length < 10000) {
+      this.tickSamples.push(duration);
+    }
+    metrics.recordTickDuration(duration);
+  }
+
+  getTickSamples() {
+    return this.tickSamples;
+  }
+
   tick() {
     for (const room of this.rooms.values()) {
       this.tickRoom(room);
@@ -660,17 +743,17 @@ export class WorkerService {
       if (this.draining || endedDuration > 15000) {
         this.rooms.delete(room.code);
         this.workerRegistry.releaseRoomLease(room.code, this.workerId);
-        metrics.recordTickDuration(performance.now() - tickStart);
+        this.recordTick(performance.now() - tickStart);
         return;
       }
       this.publishState(room, now);
-      metrics.recordTickDuration(performance.now() - tickStart);
+      this.recordTick(performance.now() - tickStart);
       return;
     }
 
     if (room.status !== "running") {
       this.publishState(room, now);
-      metrics.recordTickDuration(performance.now() - tickStart);
+      this.recordTick(performance.now() - tickStart);
       return;
     }
 
@@ -679,12 +762,14 @@ export class WorkerService {
 
     if (room.countdownUntil > now) {
       this.publishState(room, now);
+      this.recordTick(performance.now() - tickStart);
       return;
     }
     if (room.countdownUntil) {
       launchServe(room, now);
       room.countdownUntil = 0;
       this.publishState(room, now);
+      this.recordTick(performance.now() - tickStart);
       return;
     }
 
@@ -712,6 +797,6 @@ export class WorkerService {
     }
 
     this.publishState(room, now);
-    metrics.recordTickDuration(performance.now() - tickStart);
+    this.recordTick(performance.now() - tickStart);
   }
 }

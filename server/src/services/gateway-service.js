@@ -26,18 +26,23 @@ export class GatewayService {
     presenceStore,
     rateLimiter,
     workerRegistry,
+    roomDirectory = null,
     gatewayId = GATEWAY_ID,
-    port = PORT
+    port = PORT,
+    maxClients = 5000
   }) {
     this.bus = bus;
     this.sessionStore = sessionStore;
     this.presenceStore = presenceStore;
     this.rateLimiter = rateLimiter;
     this.workerRegistry = workerRegistry;
+    this.roomDirectory = roomDirectory;
     this.gatewayId = gatewayId;
     this.port = port;
+    this.maxClients = maxClients;
 
     this.clients = new Map(); // clientId -> client object
+    this.roomWorkerMap = new Map(); // roomCode -> workerId
     this.heartbeatTimer = null;
     this.subscriptions = [];
   }
@@ -45,14 +50,16 @@ export class GatewayService {
   async start() {
     // 1. Subscribe to unicast messages targeting clients on this gateway
     this.subscriptions.push(
-      await this.bus.subscribe(`gateway.${this.gatewayId}.client.*.send`, (data, replyTo, subject) => {
+      await this.bus.subscribe(`gateway.${this.gatewayId}.client.*.send`, async (data, replyTo, subject) => {
         const parts = subject.split(".");
         const clientId = parts[3];
         const client = this.clients.get(clientId);
         if (client) {
           if (data?.t === "matchmaker.assigned") {
             client.roomCode = data.roomCode;
-            this.bus.publish(`room.${data.roomCode}.command`, {
+            client.workerId = data.workerId;
+            this.roomWorkerMap.set(data.roomCode, data.workerId);
+            this.bus.publish(`worker.${data.workerId}.room.${data.roomCode}.command`, {
               action: "join",
               clientId: client.id,
               gatewayId: this.gatewayId,
@@ -68,11 +75,11 @@ export class GatewayService {
       })
     );
 
-    // 2. Subscribe to room snapshot broadcasts (binary 30 Hz snapshots)
+    // 2. Subscribe to targeted room snapshot stream (only rooms with clients on this gateway)
     this.subscriptions.push(
-      await this.bus.subscribe("room.*.snapshots", (binaryPayload, replyTo, subject) => {
+      await this.bus.subscribe(`gateway.${this.gatewayId}.room.*.snapshot`, (binaryPayload, replyTo, subject) => {
         const parts = subject.split(".");
-        const roomCode = parts[1];
+        const roomCode = parts[3];
         for (const client of this.clients.values()) {
           if (client.roomCode === roomCode && client.alive && !client.socket.destroyed) {
             sendBinary(client, binaryPayload);
@@ -81,11 +88,11 @@ export class GatewayService {
       })
     );
 
-    // 3. Subscribe to room event broadcasts (JSON events like roster, score, replay)
+    // 3. Subscribe to targeted room event stream (only rooms with clients on this gateway)
     this.subscriptions.push(
-      await this.bus.subscribe("room.*.events", (eventData, replyTo, subject) => {
+      await this.bus.subscribe(`gateway.${this.gatewayId}.room.*.events`, (eventData, replyTo, subject) => {
         const parts = subject.split(".");
-        const roomCode = parts[1];
+        const roomCode = parts[3];
         for (const client of this.clients.values()) {
           if (client.roomCode === roomCode && client.alive && !client.socket.destroyed) {
             send(client, eventData);
@@ -113,14 +120,59 @@ export class GatewayService {
     this.subscriptions = [];
   }
 
+  async getWorkerForRoom(roomCode) {
+    if (!roomCode) return null;
+    if (this.roomWorkerMap.has(roomCode)) return this.roomWorkerMap.get(roomCode);
+    if (this.roomDirectory) {
+      const meta = await this.roomDirectory.getRoom(roomCode);
+      if (meta?.workerId) {
+        this.roomWorkerMap.set(roomCode, meta.workerId);
+        return meta.workerId;
+      }
+    }
+    if (this.workerRegistry) {
+      const wid = await this.workerRegistry.getRoomWorker(roomCode);
+      if (wid) {
+        this.roomWorkerMap.set(roomCode, wid);
+        return wid;
+      }
+    }
+    return null;
+  }
+
+  async sendRoomCommand(client, commandData) {
+    if (!client.roomCode) return;
+    let workerId = client.workerId || this.roomWorkerMap.get(client.roomCode);
+    if (!workerId) {
+      workerId = await this.getWorkerForRoom(client.roomCode);
+      if (workerId) {
+        client.workerId = workerId;
+        this.roomWorkerMap.set(client.roomCode, workerId);
+      }
+    }
+    if (!workerId) return;
+
+    this.bus.publish(`worker.${workerId}.room.${client.roomCode}.command`, {
+      ...commandData,
+      clientId: client.id,
+      gatewayId: this.gatewayId
+    });
+  }
+
   handleClientConnected(client) {
+    if (this.clients.size >= this.maxClients) {
+      closeClient(client, 1013, "Gateway overloaded");
+      return false;
+    }
     client.gatewayId = this.gatewayId;
     client.roomCode = null;
+    client.workerId = null;
     client.inputWindowStartedAt = performance.now();
     client.inputCount = 0;
     client.inputLimitedAt = 0;
     this.clients.set(client.id, client);
     metrics.setConnectedClients(this.clients.size);
+    return true;
   }
 
   handleClientDisconnected(client) {
@@ -129,12 +181,16 @@ export class GatewayService {
     this.cancelQuick(client);
 
     if (client.roomCode) {
-      this.bus.publish(`room.${client.roomCode}.command`, {
-        action: "leave",
-        clientId: client.id,
-        gatewayId: this.gatewayId
-      });
+      const workerId = client.workerId || this.roomWorkerMap.get(client.roomCode);
+      if (workerId) {
+        this.bus.publish(`worker.${workerId}.room.${client.roomCode}.command`, {
+          action: "leave",
+          clientId: client.id,
+          gatewayId: this.gatewayId
+        });
+      }
       client.roomCode = null;
+      client.workerId = null;
     }
 
     this.clients.delete(client.id);
@@ -153,7 +209,7 @@ export class GatewayService {
     }
   }
 
-  handleMessage(client, msg) {
+  async handleMessage(client, msg) {
     if (msg.t === "clockProbe") {
       const t1 = epochNow();
       send(client, {
@@ -194,12 +250,12 @@ export class GatewayService {
     }
 
     if (msg.t === "createRoom") {
-      this.createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1", msg.visibility === "public" ? "public" : "private");
+      await this.createRoom(client, msg.mode === "2v2" ? "2v2" : "1v1", msg.visibility === "public" ? "public" : "private");
       return;
     }
 
     if (msg.t === "joinRoom") {
-      this.joinRoom(client, String(msg.code || "").toUpperCase(), msg.role === "spectator");
+      await this.joinRoom(client, String(msg.code || "").toUpperCase(), msg.role === "spectator");
       return;
     }
 
@@ -209,49 +265,22 @@ export class GatewayService {
     }
 
     if (msg.t === "selectSlot") {
-      if (client.roomCode) {
-        this.bus.publish(`room.${client.roomCode}.command`, {
-          action: "selectSlot",
-          clientId: client.id,
-          gatewayId: this.gatewayId,
-          slot: Number(msg.slot)
-        });
-      }
+      await this.sendRoomCommand(client, { action: "selectSlot", slot: Number(msg.slot) });
       return;
     }
 
     if (msg.t === "fillAi") {
-      if (client.roomCode) {
-        this.bus.publish(`room.${client.roomCode}.command`, {
-          action: "fillAi",
-          clientId: client.id,
-          gatewayId: this.gatewayId
-        });
-      }
+      await this.sendRoomCommand(client, { action: "fillAi" });
       return;
     }
 
     if (msg.t === "replayRoom") {
-      if (client.roomCode) {
-        this.bus.publish(`room.${client.roomCode}.command`, {
-          action: "replayRoom",
-          clientId: client.id,
-          gatewayId: this.gatewayId
-        });
-      }
+      await this.sendRoomCommand(client, { action: "replayRoom" });
       return;
     }
 
     if (msg.t === "cheer") {
-      if (client.roomCode) {
-        this.bus.publish(`room.${client.roomCode}.command`, {
-          action: "cheer",
-          clientId: client.id,
-          gatewayId: this.gatewayId,
-          emoji: msg.emoji,
-          name: client.name
-        });
-      }
+      await this.sendRoomCommand(client, { action: "cheer", emoji: msg.emoji, name: client.name });
       return;
     }
 
@@ -276,8 +305,10 @@ export class GatewayService {
   handleInput(client, x, sequence = null, serverTime = null, observedX = null, observedVx = null, timestampTrusted = false) {
     if (!this.allowClientInput(client)) return;
     if (!client.roomCode) return;
+    const workerId = client.workerId || this.roomWorkerMap.get(client.roomCode);
+    if (!workerId) return;
 
-    this.bus.publish(`room.${client.roomCode}.input`, {
+    this.bus.publish(`worker.${workerId}.room.${client.roomCode}.input`, {
       clientId: client.id,
       x,
       sequence,
@@ -335,8 +366,10 @@ export class GatewayService {
       );
       if (res?.ok && res.roomCode) {
         client.roomCode = res.roomCode;
+        client.workerId = res.workerId;
+        this.roomWorkerMap.set(res.roomCode, res.workerId);
         send(client, { t: "roomCreated", code: res.roomCode, mode });
-        this.bus.publish(`room.${res.roomCode}.command`, {
+        this.bus.publish(`worker.${res.workerId}.room.${res.roomCode}.command`, {
           action: "join",
           clientId: client.id,
           gatewayId: this.gatewayId,
@@ -358,27 +391,38 @@ export class GatewayService {
   async joinRoom(client, code, spectator = false) {
     this.leaveRoom(client);
     client.roomCode = code;
-    this.bus.publish(`room.${code}.command`, {
-      action: "join",
-      clientId: client.id,
-      gatewayId: this.gatewayId,
-      name: client.name,
-      sessionId: client.sessionId,
-      playerId: client.playerId,
-      teamPreference: client.teamPreference,
-      protocol: client.protocol,
-      spectator
-    });
+    let workerId = await this.getWorkerForRoom(code);
+    if (workerId) {
+      client.workerId = workerId;
+      this.roomWorkerMap.set(code, workerId);
+      this.bus.publish(`worker.${workerId}.room.${code}.command`, {
+        action: "join",
+        clientId: client.id,
+        gatewayId: this.gatewayId,
+        name: client.name,
+        sessionId: client.sessionId,
+        playerId: client.playerId,
+        teamPreference: client.teamPreference,
+        protocol: client.protocol,
+        spectator
+      });
+    } else {
+      send(client, { t: "error", message: "Room not found or worker unavailable" });
+    }
   }
 
   leaveRoom(client) {
     if (client.roomCode) {
-      this.bus.publish(`room.${client.roomCode}.command`, {
-        action: "leave",
-        clientId: client.id,
-        gatewayId: this.gatewayId
-      });
+      const workerId = client.workerId || this.roomWorkerMap.get(client.roomCode);
+      if (workerId) {
+        this.bus.publish(`worker.${workerId}.room.${client.roomCode}.command`, {
+          action: "leave",
+          clientId: client.id,
+          gatewayId: this.gatewayId
+        });
+      }
       client.roomCode = null;
+      client.workerId = null;
     }
   }
 }

@@ -5,10 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.12.0] - 2026-09-24
+
+### Highlights
+- Distributed Correctness & True Service Role Separation: Refactored service bootstrap (`SERVICE_ROLE=gateway`, `worker`, `matchmaker`, `unified`) so gateway runs without physics, worker runs without player WebSockets, and matchmaker runs without physics or WebSockets.
+- Partitioned O(1) Routing Invariant: Eliminated global input/snapshot fan-out; worker inputs route directly via `worker.<workerId>.room.<roomId>.input`, and snapshots route exclusively via `gateway.<gatewayId>.room.<roomId>.snapshot` to gateways with active room participants.
+- Atomic Matchmaking & HA Clustering: Distributed matchmaking queue (`RedisMatchmakingQueue`) with atomic Lua script group claiming and NATS queue-group subscriptions (`{ queue: "matchmakers" }`), safe for multi-replica concurrency.
+- Production Fail-Closed Architecture: Production distributed services fail closed on missing databases, Redis, or NATS brokers instead of falling back to silent in-memory mocks.
+- Database Migration Lifecycle: Readiness probe reflects migration health, standalone CLI runner (`scripts/migrate.js`), and Kubernetes Job (`deploy/k3s/migration-job.yaml`).
+- Real Scale Measurement Sampling: Refactored scale harness (`scripts/scale-benchmark.js`) to sample actual authoritative worker tick times with dynamic SLO threshold verification.
+- Replay Viewport Fix: Fixed `renderer.resize is not a function` error occurring on replay launch in production.
+
 ## [v1.11.0] - 2026-09-23
 
 ### Highlights
-- Operational Certification for 200+ Container Replicas: Tested and certified for large-scale distributed deployments hosting 10,000+ concurrent courts and 20,000+ simultaneous players within a sub-16.6ms physics tick budget.
+- Configurable Multi-Replica Scale Architecture: Architecture supports configurable worker autoscaling up to 200 replicas; production capacity remains subject to measured infrastructure-specific load testing.
 - Production Prometheus Metrics & Telemetry: Integrated `/metrics` exporting standard Prometheus 0.0.4 text format alongside `/metrics.json` structured JSON telemetry, featuring zero-allocation rolling reservoir percentiles (p50, p90, p95, p99) for tick durations, client RTT, and matchmaking wait.
 - Multi-Replica Synthetic Scale Benchmark: New CLI benchmark harness (`npm run test:scale`) simulating distributed clusters from 1 to 200 workers under active 60 Hz gameplay input streams with automated SLO verification.
 - Kubernetes Autoscaling & Resilience: HorizontalPodAutoscalers (`deploy/k3s/hpa.yaml`) scaling workers up to 200 replicas with 300s scale-down stabilization windows, and PodDisruptionBudgets (`deploy/k3s/pdb.yaml`) preventing match drops during cluster maintenance.

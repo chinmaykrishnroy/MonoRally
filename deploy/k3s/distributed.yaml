@@ -60,7 +60,7 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.12.0
           imagePullPolicy: IfNotPresent
           resources:
             requests:
@@ -88,13 +88,11 @@ spec:
                 secretKeyRef:
                   name: monorally-secrets
                   key: database-url
-                  optional: true
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
                   name: monorally-secrets
                   key: redis-url
-                  optional: true
             - name: CORS_ORIGINS
               value: "https://mono.prefect-sys.online"
           readinessProbe:
@@ -138,7 +136,7 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: worker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.12.0
           imagePullPolicy: IfNotPresent
           resources:
             requests:
@@ -165,13 +163,11 @@ spec:
                 secretKeyRef:
                   name: monorally-secrets
                   key: database-url
-                  optional: true
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
                   name: monorally-secrets
                   key: redis-url
-                  optional: true
             - name: WORKER_CAPACITY_MAX_ROOMS
               value: "50"
 ---
@@ -182,7 +178,7 @@ metadata:
   labels:
     app.kubernetes.io/name: monorally-matchmaker
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: monorally-matchmaker
@@ -193,7 +189,7 @@ spec:
     spec:
       containers:
         - name: matchmaker
-          image: ghcr.io/chinmaykrishnroy/monorally:1.11.0
+          image: ghcr.io/chinmaykrishnroy/monorally:1.12.0
           imagePullPolicy: IfNotPresent
           resources:
             requests:
@@ -214,7 +210,6 @@ spec:
                 secretKeyRef:
                   name: monorally-secrets
                   key: redis-url
-                  optional: true
 ---
 apiVersion: v1
 kind: Service

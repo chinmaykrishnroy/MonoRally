@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.11.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.11.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.12.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.12.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -138,17 +138,17 @@ kubectl apply -f deploy/k3s/pdb.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.11.0`, MonoRally introduces large-scale validation, telemetry, and hardening:
-- **Operational Certification for 200+ Container Replicas**: Capable of hosting 10,000+ concurrent courts and 20,000+ simultaneous players with sub-16.6ms physics ticks.
+As of `v1.12.0`, MonoRally introduces distributed-systems correctness, real metrics sampling, and hardening:
+- **Configurable Multi-Replica Scale Architecture**: Architecture supports configurable worker autoscaling up to 200 replicas; production capacity remains subject to measured infrastructure-specific load testing.
 - **Production Prometheus Metrics & Telemetry**: Native `/metrics` endpoint exporting Prometheus 0.0.4 text format alongside `/metrics.json` structured telemetry with rolling reservoir percentiles (p50, p90, p95, p99) for physics tick duration, client RTT, and matchmaking wait.
-- **Multi-Replica Synthetic Scale Benchmark**: Dedicated CLI harness (`npm run test:scale`) simulating distributed clusters from 1 to 200 workers under 60 Hz input packet streams with automated SLO verification.
+- **Multi-Replica Synthetic Scale Benchmark**: Dedicated CLI harness (`npm run test:scale`) simulating distributed clusters from 1 to 200 workers under 60 Hz input packet streams with automated SLO verification and real tick sampling.
 - **Kubernetes Autoscaling & Resilience**: HorizontalPodAutoscalers (`hpa.yaml`) scaling workers up to 200 pods with 300s scale-down stabilization, and PodDisruptionBudgets (`pdb.yaml`) protecting live tournaments during cluster maintenance.
 - **Operational Capacity Runbook**: Comprehensive SRE manual (`docs/RUNBOOK_CAPACITY_SCALE.md`) with mathematical network/memory/CPU sizing formulas, scaling tiers, alerting rules, and incident playbooks.
 - **Sharing, Replays & Discoverability**: High-res match result cards (1200×630), deterministic match replay engine with scrubber and speeds (`0.5x`, `1x`, `2x`), OpenGraph/Twitter social cards, and JSON-LD structured data.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.11.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.12.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 

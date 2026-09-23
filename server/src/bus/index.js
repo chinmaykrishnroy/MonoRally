@@ -7,14 +7,20 @@ import { NatsBus } from "./nats-bus.js";
  */
 export async function createEventBus(options = {}) {
   const type = options.type || process.env.BUS_TYPE || (process.env.NATS_URL ? "nats" : "memory");
+  const allowFallback = options.allowFallback ?? (process.env.SERVICE_ROLE === "unified" || process.env.NODE_ENV === "test");
   if (type === "nats") {
     try {
       return await NatsBus.connect(options);
     } catch (err) {
-      console.warn(
-        `[EventBus] Could not connect to NATS (${err.message}). Falling back to high-performance MemoryBus.`
+      if (allowFallback) {
+        console.warn(
+          `[EventBus] Could not connect to NATS (${err.message}). Falling back to MemoryBus for local/test mode.`
+        );
+        return new MemoryBus();
+      }
+      throw new Error(
+        `[EventBus] Fatal: NATS connection required for role "${process.env.SERVICE_ROLE || "distributed"}" failed: ${err.message}`
       );
-      return new MemoryBus();
     }
   }
   return new MemoryBus();

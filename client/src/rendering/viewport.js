@@ -164,5 +164,10 @@ export function createCourtViewport(ctx, usesMobileVisuals) {
     };
   }
 
-  return { clientToCourt, cssPxToCourt, prepareCanvas, viewport };
+  function resize() {
+    layoutDirty = true;
+    prepareCanvas(document.body.classList.contains("invert"));
+  }
+
+  return { clientToCourt, cssPxToCourt, prepareCanvas, resize, viewport };
 }

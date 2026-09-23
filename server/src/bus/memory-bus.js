@@ -28,22 +28,40 @@ export class MemoryBus extends EventBus {
   constructor() {
     super();
     this.subscriptions = new Set();
+    this.queueIndices = new Map();
     this.closed = false;
   }
 
   async publish(subject, data, replyTo = undefined) {
     if (this.closed) return;
-    const matches = [];
+    const standardHandlers = [];
+    const queueGroups = new Map();
+
     for (const sub of this.subscriptions) {
       if (matchSubject(sub.pattern, subject)) {
-        matches.push(sub.handler);
+        if (sub.queue) {
+          if (!queueGroups.has(sub.queue)) queueGroups.set(sub.queue, []);
+          queueGroups.get(sub.queue).push(sub.handler);
+        } else {
+          standardHandlers.push(sub.handler);
+        }
       }
     }
-    if (matches.length === 0) return;
+
+    const handlersToInvoke = [...standardHandlers];
+    for (const [queueName, groupHandlers] of queueGroups.entries()) {
+      if (groupHandlers.length > 0) {
+        const nextIdx = (this.queueIndices.get(queueName) || 0) % groupHandlers.length;
+        this.queueIndices.set(queueName, nextIdx + 1);
+        handlersToInvoke.push(groupHandlers[nextIdx]);
+      }
+    }
+
+    if (handlersToInvoke.length === 0) return;
 
     // Asynchronous dispatch preserves event loop interleaving like a real network bus
     queueMicrotask(() => {
-      for (const handler of matches) {
+      for (const handler of handlersToInvoke) {
         try {
           handler(data, replyTo, subject);
         } catch (err) {
@@ -53,11 +71,11 @@ export class MemoryBus extends EventBus {
     });
   }
 
-  async subscribe(subject, handler) {
+  async subscribe(subject, handler, options = {}) {
     if (this.closed) {
       throw new Error("Cannot subscribe to closed MemoryBus");
     }
-    const sub = { pattern: subject, handler };
+    const sub = { pattern: subject, handler, queue: options.queue || null };
     this.subscriptions.add(sub);
     return {
       unsubscribe: () => {

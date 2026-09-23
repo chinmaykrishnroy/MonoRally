@@ -11,7 +11,7 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
   const ballBumpStates = new Map();
   const mobileVisualQuery = window.matchMedia("(max-width: 820px), (pointer: coarse)");
   let lastImpactToken = "";
-  const { clientToCourt, cssPxToCourt, prepareCanvas, viewport } = createCourtViewport(ctx, usesMobileVisuals);
+  const { clientToCourt, cssPxToCourt, prepareCanvas, resize: resizeViewport, viewport } = createCourtViewport(ctx, usesMobileVisuals);
   const trajectory = createTrajectoryPredictor(state);
 
   function draw(s) {
@@ -738,7 +738,7 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     document.body.classList.remove("invert", "shake");
   }
 
-  return { clearThunder, clientToCourt, draw, interpolatedNetState: trajectory.interpolatedNetState, toViewY };
+  return { clearThunder, clientToCourt, draw, interpolatedNetState: trajectory.interpolatedNetState, resize: resizeViewport, toViewY };
 }
 
 export function stagingSlots() {

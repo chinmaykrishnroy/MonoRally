@@ -60,8 +60,10 @@ export class NatsBus extends EventBus {
     this.nc.publish(subject, payload, { reply: replyTo });
   }
 
-  async subscribe(subject, handler) {
-    const natsSub = this.nc.subscribe(subject);
+  async subscribe(subject, handler, options = {}) {
+    const subOpts = {};
+    if (options.queue) subOpts.queue = options.queue;
+    const natsSub = this.nc.subscribe(subject, subOpts);
     this.subscriptions.add(natsSub);
 
     // Consume messages asynchronously from NATS subscription iterator

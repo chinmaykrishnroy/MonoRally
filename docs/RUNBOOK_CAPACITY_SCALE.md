@@ -1,6 +1,6 @@
-# MonoRally Operational Capacity & Scale Runbook (v1.11.0)
+# MonoRally Operational Capacity & Scale Runbook (v1.12.0)
 
-This operational runbook provides the definitive engineering and SRE manual for managing, monitoring, sizing, and autoscaling **MonoRally** at large scale—up to **200+ container replicas**, **10,000+ concurrent courts**, and **20,000+ simultaneous players**.
+This operational runbook provides the engineering and SRE manual for managing, monitoring, sizing, and autoscaling **MonoRally** across distributed topologies. The architecture supports configurable worker autoscaling up to 200 replicas; production capacity remains subject to measured infrastructure-specific load testing.
 
 ---
 
@@ -260,10 +260,10 @@ groups:
 ---
 
 ### Playbook 3: Zero-Downtime Rolling Update Verification
-To deploy a new container release (e.g. `1.11.0`):
+To deploy a new container release (e.g. `1.12.0`):
 1. **Apply deployment update**:
    ```sh
-   kubectl set image deployment/monorally-worker worker=ghcr.io/chinmaykrishnroy/monorally:1.11.0
+   kubectl set image deployment/monorally-worker worker=ghcr.io/chinmaykrishnroy/monorally:1.12.0
    ```
 2. **Watch graceful drain progression**:
    ```sh
@@ -282,4 +282,4 @@ npm run test:scale -- --workers=10 --pairs=15 --duration=10 --format=markdown
 # Run heavy 50-worker scale test
 node scripts/scale-benchmark.js --workers=50 --gateways=10 --pairs=100 --duration=15
 ```
-Verify that all outputs report `PASS` with `p99 tick duration < 16.6 ms`.
+Verify that all outputs report `PASS` with dynamically evaluated sampled tick measurements under the 16.6ms SLO deadline.

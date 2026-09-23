@@ -47,7 +47,7 @@ function readJsonBody(req, limit = 16384) {
   });
 }
 
-export function createHttpServer({ checkHealth, leaderboard, playerRepository, matchRepository, publicRoomPage, onDrain } = {}) {
+export function createHttpServer({ checkHealth, leaderboard, playerRepository, matchRepository, roomDirectory, publicRoomPage, onDrain } = {}) {
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -164,7 +164,27 @@ export function createHttpServer({ checkHealth, leaderboard, playerRepository, m
         });
       return;
     }
-    if (requested === "/rooms.json") {
+    if (requested === "/rooms.json" || requested === "/api/rooms") {
+      if (roomDirectory) {
+        const page = Number(requestUrl.searchParams.get("page")) || 1;
+        const pageSize = Number(requestUrl.searchParams.get("pageSize")) || 10;
+        Promise.resolve(roomDirectory.listPublicRooms({ page, pageSize }))
+          .then((result) => {
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify(result));
+          })
+          .catch((err) => {
+            res.writeHead(500, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ error: err.message, rooms: [] }));
+          });
+        return;
+      }
       res.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store"

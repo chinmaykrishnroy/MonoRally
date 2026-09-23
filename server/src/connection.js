@@ -3,7 +3,7 @@ import { ALLOWED_ORIGINS, PORT } from "./config.js";
 import { handleFrames, send } from "./ws.js";
 import { metrics } from "./metrics.js";
 
-export function attachWebSocketServer(server, { broadcastRooms, clients, onBinary, onDisconnect, onMessage }) {
+export function attachWebSocketServer(server, { broadcastRooms = () => {}, clients, onBinary, onDisconnect, onMessage }) {
   server.on("upgrade", (req, socket) => {
     const origin = req.headers.origin;
     if (origin && !ALLOWED_ORIGINS.includes(origin)) {

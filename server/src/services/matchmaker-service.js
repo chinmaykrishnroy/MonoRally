@@ -1,113 +1,109 @@
 import { QUICK_MATCH_FALLBACK_MS } from "../config.js";
 import { metrics } from "../metrics.js";
+import { createMatchmakingQueue } from "../redis/matchmaking-queue.js";
 
 /**
  * MatchmakerService
  * Coordinates matchmaking queues across all gateways and dispatches matches to least-loaded workers.
+ * Multi-replica safe: uses Redis-backed atomic claims and NATS queue groups.
  */
 export class MatchmakerService {
-  constructor({ bus, workerRegistry, fallbackMs = QUICK_MATCH_FALLBACK_MS }) {
+  constructor({ bus, workerRegistry, matchmakingQueue = null, fallbackMs = QUICK_MATCH_FALLBACK_MS }) {
     this.bus = bus;
     this.workerRegistry = workerRegistry;
+    this.queue = matchmakingQueue || createMatchmakingQueue();
     this.fallbackMs = fallbackMs;
-    this.queues = {
-      "1v1": [],
-      "2v2": []
-    };
-    this.timers = new Map(); // clientId -> timeoutId
     this.subscriptions = [];
+    this.pollTimer = null;
   }
 
   async start() {
     this.subscriptions.push(
-      await this.bus.subscribe("matchmaker.queue.join", (data) => {
-        this.enqueue(data);
-      })
+      await this.bus.subscribe(
+        "matchmaker.queue.join",
+        async (data) => {
+          await this.enqueue(data);
+        },
+        { queue: "matchmakers" }
+      )
     );
 
     this.subscriptions.push(
-      await this.bus.subscribe("matchmaker.queue.leave", (data) => {
-        this.dequeue(data.clientId);
-      })
+      await this.bus.subscribe(
+        "matchmaker.queue.leave",
+        async (data) => {
+          await this.dequeue(data.clientId);
+        },
+        { queue: "matchmakers" }
+      )
     );
 
     this.subscriptions.push(
-      await this.bus.subscribe("matchmaker.allocate_room", async (data, replyTo) => {
-        if (!replyTo) return;
-        const res = await this.allocateOnBestWorker(data);
-        await this.bus.publish(replyTo, res);
-      })
+      await this.bus.subscribe(
+        "matchmaker.allocate_room",
+        async (data, replyTo) => {
+          if (!replyTo) return;
+          const res = await this.allocateOnBestWorker(data);
+          await this.bus.publish(replyTo, res);
+        },
+        { queue: "matchmakers" }
+      )
     );
+
+    // Periodic check for timed-out players to fill with AI bots
+    this.pollTimer = setInterval(async () => {
+      await this.checkFallbackTimeouts();
+    }, 1000);
   }
 
   async stop() {
-    for (const timer of this.timers.values()) {
-      clearTimeout(timer);
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
-    this.timers.clear();
     for (const sub of this.subscriptions) {
       sub.unsubscribe();
     }
     this.subscriptions = [];
   }
 
-  enqueue(player) {
+  async enqueue(player) {
     const mode = player.mode === "2v2" ? "2v2" : "1v1";
-    this.dequeue(player.clientId);
-
-    const queue = this.queues[mode];
-    const entry = {
-      ...player,
-      enqueuedAt: Date.now()
-    };
-    queue.push(entry);
+    await this.queue.enqueue(player);
 
     const needed = mode === "2v2" ? 4 : 2;
-    if (queue.length >= needed) {
-      const matched = queue.splice(0, needed);
+    const matched = await this.queue.claimGroup(mode, needed);
+
+    if (matched && matched.length === needed) {
       const now = Date.now();
       for (const p of matched) {
-        this.clearPlayerTimer(p.clientId);
         if (p.enqueuedAt) metrics.recordMatchmakerWait(now - p.enqueuedAt);
       }
-      metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
-      this.dispatchMatch(mode, matched, false);
+      const totalDepth = await this.queue.getTotalDepth();
+      metrics.setMatchmakerQueue(totalDepth);
+      await this.dispatchMatch(mode, matched, false);
       return;
     }
 
-    metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
-
-    const timer = setTimeout(() => {
-      this.clearPlayerTimer(player.clientId);
-      const idx = queue.findIndex((p) => p.clientId === player.clientId);
-      if (idx !== -1) {
-        const [timedOutPlayer] = queue.splice(idx, 1);
-        if (timedOutPlayer.enqueuedAt) metrics.recordMatchmakerWait(Date.now() - timedOutPlayer.enqueuedAt);
-        metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
-        this.dispatchMatch(mode, [timedOutPlayer], true);
-      }
-    }, this.fallbackMs);
-
-    this.timers.set(player.clientId, timer);
+    const totalDepth = await this.queue.getTotalDepth();
+    metrics.setMatchmakerQueue(totalDepth);
   }
 
-  dequeue(clientId) {
-    this.clearPlayerTimer(clientId);
+  async dequeue(clientId) {
+    await this.queue.dequeue(clientId);
+    const totalDepth = await this.queue.getTotalDepth();
+    metrics.setMatchmakerQueue(totalDepth);
+  }
+
+  async checkFallbackTimeouts() {
     for (const mode of ["1v1", "2v2"]) {
-      const q = this.queues[mode];
-      const idx = q.findIndex((p) => p.clientId === clientId);
-      if (idx !== -1) {
-        q.splice(idx, 1);
+      const timedOut = await this.queue.claimTimedOut(mode, this.fallbackMs);
+      if (timedOut) {
+        if (timedOut.enqueuedAt) metrics.recordMatchmakerWait(Date.now() - timedOut.enqueuedAt);
+        const totalDepth = await this.queue.getTotalDepth();
+        metrics.setMatchmakerQueue(totalDepth);
+        await this.dispatchMatch(mode, [timedOut], true);
       }
-    }
-    metrics.setMatchmakerQueue(this.queues["1v1"].length + this.queues["2v2"].length);
-  }
-
-  clearPlayerTimer(clientId) {
-    const t = this.timers.get(clientId);
-    if (t) {
-      clearTimeout(t);
-      this.timers.delete(clientId);
     }
   }
 

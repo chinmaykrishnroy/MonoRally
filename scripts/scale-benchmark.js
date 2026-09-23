@@ -168,20 +168,16 @@ export async function runScaleBenchmark({
 
   // Harvest metrics from all workers
   let totalRooms = 0;
-  const tickStats = [];
+  const allTickSamples = [];
   for (const worker of workers) {
     totalRooms += worker.rooms.size;
-    // Collect tick durations from worker
-    for (const r of worker.rooms.values()) {
-      if (r.lastTick) {
-        // Sample recent tick
-      }
-    }
+    const samples = worker.getTickSamples?.() || [];
+    allTickSamples.push(...samples);
   }
 
   const memory = process.memoryUsage();
   const durationMs = performance.now() - startTime;
-  const throughputPacketsSec = Math.round((totalInputPackets / (durationSeconds)) * 10) / 10;
+  const throughputPacketsSec = Math.round((totalInputPackets / durationSeconds) * 10) / 10;
   const bytesPerRoom = totalRooms > 0 ? Math.round(memory.heapUsed / totalRooms) : 0;
 
   // Cleanup
@@ -193,6 +189,13 @@ export async function runScaleBenchmark({
   const connectP50 = percentile(connectLatencies, 0.5);
   const connectP95 = percentile(connectLatencies, 0.95);
   const connectP99 = percentile(connectLatencies, 0.99);
+
+  const tickP50 = allTickSamples.length ? percentile(allTickSamples, 0.5) : 0;
+  const tickP90 = allTickSamples.length ? percentile(allTickSamples, 0.9) : 0;
+  const tickP95 = allTickSamples.length ? percentile(allTickSamples, 0.95) : 0;
+  const tickP99 = allTickSamples.length ? percentile(allTickSamples, 0.99) : 0;
+  const sloDeadlineMs = 16.6;
+  const sloPassed = allTickSamples.length > 0 && tickP99 < sloDeadlineMs;
 
   return {
     scale: {
@@ -211,12 +214,13 @@ export async function runScaleBenchmark({
         p99: connectP99
       },
       tickDurationMs: {
-        p50: 0.85,
-        p90: 1.42,
-        p95: 1.88,
-        p99: 2.45,
-        sloDeadlineMs: 16.6,
-        sloPassed: true
+        samples: allTickSamples.length,
+        p50: tickP50,
+        p90: tickP90,
+        p95: tickP95,
+        p99: tickP99,
+        sloDeadlineMs,
+        sloPassed
       }
     },
     resources: {

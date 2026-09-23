@@ -109,5 +109,28 @@ describe("EventBus & Pattern Matching", () => {
     it("times out request when no replier responds", async () => {
       await expect(bus.request("unhandled.subject", {}, 50)).rejects.toThrow("MemoryBus request timeout");
     });
+
+    it("distributes messages among subscribers in a queue group", async () => {
+      const g1Received = [];
+      const g2Received = [];
+      const standardReceived = [];
+
+      await bus.subscribe("tasks", (d) => standardReceived.push(d));
+      await bus.subscribe("tasks", (d) => g1Received.push(d), { queue: "workers" });
+      await bus.subscribe("tasks", (d) => g2Received.push(d), { queue: "workers" });
+
+      await bus.publish("tasks", 1);
+      await bus.publish("tasks", 2);
+      await bus.publish("tasks", 3);
+      await bus.publish("tasks", 4);
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(standardReceived).toEqual([1, 2, 3, 4]);
+      // Each message reached exactly one worker in the group
+      expect(g1Received.length + g2Received.length).toBe(4);
+      expect(g1Received.length).toBe(2);
+      expect(g2Received.length).toBe(2);
+    });
   });
 });
