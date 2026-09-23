@@ -63,6 +63,29 @@ test("opens and displays player profile modal with rank and stats", async ({ pag
   await expect(page.locator("#profileModal")).toBeHidden();
 });
 
+test("quick match with AI warmup launches on-court game while searching", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "single warmup test contract");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await page.getByRole("button", { name: /Play online/ }).click();
+  await expect(page.locator("#quickWarmupBtn")).toBeVisible();
+  await page.locator("#quickWarmupBtn").click();
+
+  // Court should become active (warmup or seamless match transition)
+  await expect(page.locator("#game")).toBeVisible();
+  await expect(page.locator("#modeLabel")).toContainText(/Searching|1v1/);
+
+  // Leave returns cleanly
+  await page.getByRole("button", { name: "Leave" }).click();
+  await expect(page.locator("#game")).toBeHidden();
+});
+
+test("direct join link with join query param opens and attempts room join", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "single direct join test contract");
+  await page.goto("/?join=WARP99&role=player");
+  await expect(page.locator("#roomCode")).toHaveValue("WARP99");
+});
+
 test("home renders ten scrollable rankers for both match sizes", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "single leaderboard rendering contract");
   const entries = (mode) => Array.from({ length: 10 }, (_, index) => ({

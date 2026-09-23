@@ -70,6 +70,11 @@ export function createRoomLifecycle(rooms) {
     room.pendingCountdown = false;
     room.lastMissTeam = null;
     room.replayStarting = false;
+    room.rematchConsent?.clear();
+    if (room.rematchTimer) {
+      clearTimeout(room.rematchTimer);
+      room.rematchTimer = null;
+    }
     resetPlayers(room);
     room.balls = [];
     room.nextBallId = 1;

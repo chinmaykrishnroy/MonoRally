@@ -30,6 +30,8 @@ import { canReplayRoom, createRoomLifecycle } from "../room-lifecycle.js";
 import { jsonState, scoredStatePacket } from "../serialization.js";
 import { clamp, generatedName, rand, requestedTeam, startingXForSlot } from "../utils.js";
 import { finalizeMatch } from "../match-finalizer.js";
+import { evaluateRematchRequest, handlePlayerLeaveRematch } from "../rematch.js";
+import { validateCheer } from "../cheer.js";
 
 /**
  * WorkerService
@@ -297,6 +299,8 @@ export class WorkerService {
       this.handleFillAi(room, clientId);
     } else if (action === "replayRoom") {
       this.handleReplay(room, clientId);
+    } else if (action === "cheer") {
+      this.handleCheer(room, clientId, data.emoji, data.name);
     }
   }
 
@@ -338,6 +342,14 @@ export class WorkerService {
   }
 
   handleLeave(room, clientId) {
+    const declined = handlePlayerLeaveRematch(room, clientId);
+    if (declined) {
+      this.bus.publish(`room.${room.code}.events`, {
+        t: "rematchDeclined",
+        code: room.code,
+        message: "A player left the room."
+      });
+    }
     room.players = room.players.filter((p) => p.clientId !== clientId);
     room.spectators = room.spectators.filter((s) => s.clientId !== clientId);
     if (room.status === "running") {
@@ -397,12 +409,62 @@ export class WorkerService {
     const player = room.players.find((p) => p.clientId === clientId);
     if (!player || room.status !== "ended") return;
     if (room.replayStarting) return;
-    room.replayStarting = true;
 
+    const humanPlayers = room.players.filter((p) => !p.bot && !p.disconnected && p.clientId);
+    const res = evaluateRematchRequest(room, clientId, humanPlayers);
+
+    if (!res.ok) return;
+
+    if (!res.immediate) {
+      this.bus.publish(`room.${room.code}.events`, {
+        t: "rematchStatus",
+        code: room.code,
+        acceptedBy: player.name,
+        acceptedCount: res.acceptedCount,
+        totalNeeded: res.totalNeeded,
+        timeLeft: res.timeLeft
+      });
+
+      if (!room.rematchTimer) {
+        room.rematchTimer = setTimeout(() => {
+          if (!room) return;
+          room.rematchConsent?.clear();
+          room.rematchTimer = null;
+          this.bus.publish(`room.${room.code}.events`, {
+            t: "rematchExpired",
+            code: room.code,
+            message: "Rematch request expired."
+          });
+        }, 15000);
+      }
+      return;
+    }
+
+    if (room.rematchTimer) {
+      clearTimeout(room.rematchTimer);
+      room.rematchTimer = null;
+    }
+    room.replayStarting = true;
     this.startRoom(room);
     this.bus.publish(`room.${room.code}.events`, { t: "replayStarted", code: room.code, mode: room.mode });
     this.publishState(room, performance.now(), true);
     room.replayStarting = false;
+  }
+
+  handleCheer(room, clientId, emoji, name) {
+    const check = validateCheer(emoji, this.clientCheerTimes?.get(clientId));
+    if (!check.ok) return;
+    if (!this.clientCheerTimes) this.clientCheerTimes = new Map();
+    const now = performance.now();
+    this.clientCheerTimes.set(clientId, now);
+
+    this.bus.publish(`room.${room.code}.events`, {
+      t: "cheer",
+      code: room.code,
+      emoji,
+      from: name || "Spectator",
+      at: now
+    });
   }
 
   addPlayer(room, client, assignment = null) {

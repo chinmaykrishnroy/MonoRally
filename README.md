@@ -113,8 +113,8 @@ and keep `https://mono.prefect-sys.online` in `CORS_ORIGINS`.
 Every version tag publishes a signed-by-GitHub build to GitHub Container Registry for both `linux/amd64` and `linux/arm64`.
 
 ```bash
-docker pull ghcr.io/chinmaykrishnroy/monorally:1.8.0
-docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.8.0
+docker pull ghcr.io/chinmaykrishnroy/monorally:1.9.0
+docker run --rm -p 8787:8787 --env-file .env ghcr.io/chinmaykrishnroy/monorally:1.9.0
 ```
 
 For K3s, apply the unified single-pod example:
@@ -137,16 +137,17 @@ kubectl apply -f deploy/k3s/autoscaling.yaml
 
 The first published GHCR package may need to be made public once in GitHub: repository **Packages** > **monorally** > **Package settings** > **Change visibility**. Public images can then be pulled by K3s without an image pull secret.
 
-As of `v1.8.0`, MonoRally introduces player profiles, competitive ranked matchmaking, and progression retention:
-- **Anonymous-First Player Identity**: Persistent anonymous UUID saved locally and synchronized seamlessly with server repositories—zero forced passwords or email barriers.
-- **Authoritative Symmetrical Elo Engine**: True Elo calculation ($K=32$) applied strictly to competitive human matchups, featuring six tiered ranks: Bronze (<1200), Silver (1200–1399), Gold (1400–1599), Platinum (1600–1799), Diamond (1800–1999), and Master (2000+).
-- **Player Profile Modal & HUD**: Dynamic profile dashboard detailing Elo progression bar, win rate %, win streaks, peak ball speed recorded, and skill shot breakdown (smash, curve, counter, drive counts).
-- **Achievements & Badges**: Progressive milestone tokens rewarding competitive mastery (Rookie Pilot, Rally Centurion, Gold Standard, Unstoppable Streak, Sonic Boomer, and Skill Specialists).
+As of `v1.9.0`, MonoRally introduces social multiplayer and population growth features:
+- **Mutual Rematch Consent**: Symmetrical 15-second mutual acceptance countdown for 2-player human matches with instant room reset, leave-to-decline feedback, and instant zero-wait replay in solo AI practice.
+- **Spectator Cheers & Live Reactions**: Real-time floating spectator emojis (`👏`, `🔥`, `⚡`, `🚀`, `🎯`) with server rate-limiting, cross-gateway pub/sub distribution, and animated canvas particle rendering.
+- **Background AI Warmup Matchmaking**: Instant on-court practice while queueing for online opponents, with seamless hot-swap transition into the multiplayer room when a match is found.
+- **Direct Link Room Sharing**: Web Share API integration with automatic fallback to clipboard copy, deep-link URL parameter joining (`?join=CODE&role=player`), and frictionless cross-platform game invites.
+- **Authoritative Symmetrical Elo Engine & Profiles**: Persistent anonymous UUID, true Elo calculation ($K=32$) with six tiered ranks (Bronze to Master), profile dashboard, match history, and milestone achievements.
 - **Distinctive Gameplay & Skill Shots**: Dynamic server-authoritative physics classification identifying **Smash** ($1.35\times$ boost), **Curve** ($\pm 1400\text{ px/s}^2$ Magnus spin), **Counter / Parry**, and **Drive**, coupled with Overdrive powerups and procedural synthesizer audio.
 
 ## Continuous Delivery
 
-GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.8.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
+GitHub Actions validates every push and pull request with syntax checks, unit tests, Chromium end-to-end tests, a WebSocket smoke test, and a Docker build. Pushing a version tag such as `v1.9.0` repeats those gates, then publishes multi-architecture images and creates the GitHub Release.
 
 ## Environment Variables
 

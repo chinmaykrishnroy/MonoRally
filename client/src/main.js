@@ -88,6 +88,7 @@ const {
   nameInput,
   overlay,
   profileBtn,
+  quickWarmupBtn,
   renderDelayInput,
   replayBtn,
   roomCode,
@@ -95,6 +96,7 @@ const {
   roomValue,
   settingsBtn,
   settingsName,
+  spectatorBar,
   aiDifficulty,
   soundInput,
   themeSelect,
@@ -200,6 +202,20 @@ const playFlow = createPlayFlow({
       unlockAudio();
       send(helloMessage());
       send({ t: "quick", mode, playerId: profileUi.getProfile().id });
+      state.searchingQuick = true;
+      state.quickSearchingMode = mode;
+    },
+    quickWarmup: (mode) => {
+      unlockAudio();
+      send(helloMessage());
+      send({ t: "quick", mode, playerId: profileUi.getProfile().id });
+      state.searchingQuick = true;
+      state.quickSearchingMode = mode;
+      startLocal(`Searching ${mode} · AI Warmup`);
+      statusEl.textContent = "AI Warmup active. Connecting automatically when opponent is found...";
+      networkBadge.hidden = false;
+      networkBadge.textContent = "SEARCHING...";
+      networkBadge.dataset.quality = "fair";
     },
     requestRooms: requestPublicRooms
   }
@@ -238,6 +254,26 @@ function bindUi() {
   });
   leaveBtn.addEventListener("click", leaveGame);
   dismissCoach.addEventListener("click", dismissControlCoach);
+  if (spectatorBar) {
+    for (const btn of spectatorBar.querySelectorAll(".cheerBtn")) {
+      btn.addEventListener("click", () => {
+        const emoji = btn.dataset.emoji;
+        if (emoji && state.online) {
+          send({ t: "cheer", emoji });
+          state.effects.push({
+            type: "cheer",
+            emoji,
+            from: "You",
+            x: W * 0.15 + Math.random() * (W * 0.7),
+            y: H * 0.85,
+            driftX: (Math.random() - 0.5) * 80,
+            createdAt: performance.now(),
+            duration: 1800
+          });
+        }
+      });
+    }
+  }
   $("installBtn").addEventListener("click", async () => {
     if (!state.deferredInstall) return;
     state.deferredInstall.prompt();
@@ -391,6 +427,10 @@ function handleServer(msg) {
     return;
   }
   if (msg.t === "joined") {
+    if (state.searchingQuick) {
+      state.searchingQuick = false;
+      state.localGame = null;
+    }
     playFlow.finishJoin();
     state.online = true;
     state.local = false;
@@ -417,6 +457,7 @@ function handleServer(msg) {
     roomValue.textContent = msg.code;
     networkBadge.hidden = false;
     copyRoomGameBtn.hidden = msg.role !== "player";
+    if (spectatorBar) spectatorBar.classList.toggle("hidden", msg.role !== "spectator");
     statusEl.textContent = msg.role === "spectator" ? "Spectating." : "Waiting for players...";
     if (state.autoFillAi && msg.role === "player" && msg.mode === "2v2") {
       state.autoFillAi = false;
@@ -493,7 +534,44 @@ function handleServer(msg) {
     state.lastBumpSignature = "";
     state.gameOverSoundFor = "";
     resetRoundVisuals();
+    if (replayBtn) {
+      replayBtn.textContent = "Replay";
+      replayBtn.classList.remove("pulseRematch");
+    }
     statusEl.textContent = state.role === "spectator" ? "Spectating." : "Drag to move, or use A/D or the arrow keys.";
+  }
+  if (msg.t === "rematchStatus") {
+    statusEl.textContent = `Rematch requested (${msg.acceptedCount}/${msg.totalNeeded}). Click Replay to accept!`;
+    if (replayBtn) {
+      replayBtn.textContent = `Accept Rematch (${msg.acceptedCount}/${msg.totalNeeded})`;
+      replayBtn.classList.add("pulseRematch");
+    }
+  }
+  if (msg.t === "rematchExpired") {
+    statusEl.textContent = "Rematch request expired.";
+    if (replayBtn) {
+      replayBtn.textContent = "Replay";
+      replayBtn.classList.remove("pulseRematch");
+    }
+  }
+  if (msg.t === "rematchDeclined") {
+    statusEl.textContent = msg.message || "Rematch declined.";
+    if (replayBtn) {
+      replayBtn.textContent = "Replay";
+      replayBtn.classList.remove("pulseRematch");
+    }
+  }
+  if (msg.t === "cheer") {
+    state.effects.push({
+      type: "cheer",
+      emoji: msg.emoji,
+      from: msg.from || "Spectator",
+      x: W * 0.15 + Math.random() * (W * 0.7),
+      y: H * 0.85,
+      driftX: (Math.random() - 0.5) * 80,
+      createdAt: performance.now(),
+      duration: 1800
+    });
   }
   if (msg.t === "error") {
     playFlow.finishJoin(msg.message);
@@ -540,18 +618,33 @@ function onlinePlaceholder(mode = "1v1") {
 }
 
 async function copyRoomLink() {
-  const code = roomCode.value.trim().toUpperCase();
+  const code = state.room || (roomCode.value || "").trim().toUpperCase();
   if (!code) {
     playFlow.setStatus("Create a room or enter a room code first.");
     statusEl.textContent = "Create a room or enter a room code first.";
     return;
   }
-  const url = `${location.origin}/?room=${encodeURIComponent(code)}`;
+  const url = `${location.origin}/?join=${encodeURIComponent(code)}&role=player`;
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: "MonoRally",
+        text: `Join my MonoRally match: room ${code}!`,
+        url
+      });
+      playFlow.setStatus(`Shared room ${code}.`);
+      statusEl.textContent = `Shared room ${code}.`;
+      return;
+    } catch {
+      // User cancelled or share unavailable, fallback to clipboard
+    }
+  }
   try {
     await navigator.clipboard.writeText(url);
-    playFlow.setStatus(`Copied the invite link for room ${code}.`);
-    statusEl.textContent = `Copied the invite link for room ${code}.`;
+    playFlow.setStatus(`Copied the direct invite link for room ${code}.`);
+    statusEl.textContent = `Copied the direct invite link for room ${code}.`;
   } catch {
+    roomCode.value = code;
     roomCode.select();
     playFlow.setStatus(`Room code ${code} is selected and ready to copy.`);
     statusEl.textContent = `Room code ${code} is selected and ready to copy.`;
@@ -603,6 +696,15 @@ function dismissControlCoach() {
 }
 
 function leaveGame() {
+  if (state.searchingQuick) {
+    state.searchingQuick = false;
+    send({ t: "cancelQuick" });
+  }
+  if (spectatorBar) spectatorBar.classList.add("hidden");
+  if (replayBtn) {
+    replayBtn.textContent = "Replay";
+    replayBtn.classList.remove("pulseRematch");
+  }
   send({ t: "leaveRoom" });
   clearResumeRoom();
   state.online = false;
@@ -881,7 +983,15 @@ function pulseShake(className) {
 }
 
 function applyRoomFromUrl() {
-  const code = new URLSearchParams(location.search).get("room");
+  const params = new URLSearchParams(location.search);
+  const code = (params.get("join") || params.get("room") || "").trim().toUpperCase();
   if (!code) return;
+  const role = params.get("role") === "spectator" ? "spectator" : "player";
   playFlow.openPrivateCode(code);
+  if (params.get("join")) {
+    unlockAudio();
+    send(helloMessage());
+    send({ t: "joinRoom", code, role, playerId: profileUi.getProfile().id });
+    playFlow.setStatus(role === "spectator" ? `Opening room ${code}...` : `Joining room ${code}...`);
+  }
 }

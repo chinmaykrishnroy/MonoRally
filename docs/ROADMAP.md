@@ -15,9 +15,9 @@ This document outlines the architectural and product milestones transitioning Mo
 | **v1.5.0** | Complete | Resilience & Autoscaling | Worker draining, zero-downtime rolling updates, K8s HPA/PDB, failure injection |
 | **v1.6.0** | Complete | Premium UX/UI & Visual Identity | Accent color system, velocity trails, squash/stretch, hit-stop, accessibility |
 | **v1.7.0** | Complete | Distinctive Gameplay Identity | Signature skill shots (smash, curve, counter, drive), overdrive powerup, procedural audio |
-| **v1.8.0** | Current Release | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests, achievements |
-| **v1.9.0** | Next Milestone | Social Multiplayer & Population Loop | Background human matchmaking during AI warmup, mutual rematches, invites |
-| **v1.10.0** | Planned | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |
+| **v1.8.0** | Complete | Player Profiles, Ranked & Retention | Persistent anonymous identity, Elo matchmaking, match history, personal bests, achievements |
+| **v1.9.0** | Current Release | Social Multiplayer & Population Loop | Mutual rematch consent, spectator cheers & reactions, background AI warmup, direct URL invites |
+| **v1.10.0** | Next Milestone | Sharing, Replays & Discoverability | Compact deterministic replays, shareable result cards, OpenGraph / SEO |
 | **v1.11.0** | Planned | Large-Scale Validation & Hardening | Synthetic load tests (up to 200 replicas), telemetry metrics, capacity profiling |
 
 ---
@@ -78,10 +78,12 @@ This document outlines the architectural and product milestones transitioning Mo
   - Dual backend parity across PostgreSQL and in-memory repositories.
 
 ### v1.9.0 — Social Multiplayer & Population Loop (MINOR)
-- **Objective**: Minimize human matchmaking drop-off and maximize community retention.
+- **Objective**: Minimize human matchmaking drop-off and maximize community retention through mutual rematches, spectator cheer reactions, warmups, and friction-free social invites.
 - **Key Deliverables**:
-  - Seamless matchmaking: queue for human opponent while playing AI warmup, transitioning cleanly upon match found.
-  - Post-match rematch consent, room share links, spectator mode enhancements.
+  - Mutual Rematch Consent Flow: 15-second dual acceptance countdown for 2-player matches with instant reset upon consent, leave-room decline, and zero-wait instant replay for solo AI games.
+  - Spectator Cheers & Live Reactions: Real-time floating emojis (`👏`, `🔥`, `⚡`, `🚀`, `🎯`) with server rate-limiting and cross-gateway pub/sub broadcast.
+  - Background AI Warmup Matchmaking: Instant on-court AI warm-up match while queueing for online opponents, hot-swapping into multiplayer when found.
+  - Direct Link Room Sharing: Web Share API with clipboard fallback, deep-link query parameter parsing (`?join=CODE&role=player`), and frictionless room joins.
 
 ### v1.10.0 — Sharing, Replays & Discoverability (MINOR)
 - **Objective**: Organic discovery and voluntary social sharing.

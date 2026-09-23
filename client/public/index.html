@@ -70,6 +70,7 @@
           <div class="flowStep hidden" id="onlineStep">
             <div class="choiceList">
               <button id="quickBtn" type="button"><span>Quick match</span><small>Find players; AI fills empty seats after five seconds</small></button>
+              <button id="quickWarmupBtn" type="button"><span>Warmup while searching</span><small>Warm up against AI on court while finding a human match</small></button>
               <button id="browseRoomsBtn" type="button"><span>Public rooms</span><small>Join a waiting room or watch a live match</small></button>
               <button id="privateRoomBtn" type="button"><span>Private room</span><small>Create or join with a six-character code</small></button>
             </div>
@@ -141,6 +142,14 @@
           <div><strong>Move your bottom paddle</strong><span>Drag anywhere across the lower half</span></div>
           <div class="keyHint"><kbd>A</kbd><kbd>D</kbd><span>or</span><kbd>&larr;</kbd><kbd>&rarr;</kbd></div>
           <button id="dismissCoach" type="button">Got it</button>
+        </div>
+        <div id="spectatorBar" class="spectatorBar hidden" aria-label="Spectator cheers">
+          <span class="cheerLabel">Cheer</span>
+          <button type="button" class="cheerBtn" data-emoji="👏" aria-label="Clap">👏</button>
+          <button type="button" class="cheerBtn" data-emoji="🔥" aria-label="Fire">🔥</button>
+          <button type="button" class="cheerBtn" data-emoji="⚡" aria-label="Lightning">⚡</button>
+          <button type="button" class="cheerBtn" data-emoji="🚀" aria-label="Rocket">🚀</button>
+          <button type="button" class="cheerBtn" data-emoji="🎯" aria-label="Target">🎯</button>
         </div>
         <div class="status" id="status">Drag to move, or use A/D or the arrow keys.</div>
       </section>

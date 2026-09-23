@@ -50,6 +50,8 @@ import {
 } from "./physics.js";
 import { canReplayRoom, createRoomLifecycle } from "./room-lifecycle.js";
 import { finalizeMatch } from "./match-finalizer.js";
+import { evaluateRematchRequest, handlePlayerLeaveRematch } from "./rematch.js";
+import { validateCheer } from "./cheer.js";
 import { clamp, cleanName, cleanSession, generatedName, rand, requestedTeam, startingXForSlot } from "./utils.js";
 import { broadcast, closeClient, send, sendPing } from "./ws.js";
 import { createEventBus } from "./bus/index.js";
@@ -198,6 +200,7 @@ function handleMessage(client, msg) {
   if (msg.t === "resumeRoom") resumeRoom(client, String(msg.code || "").toUpperCase());
   if (msg.t === "leaveRoom") leaveRoom(client);
   if (msg.t === "replayRoom") replayRoom(client);
+  if (msg.t === "cheer") handleCheer(client, msg.emoji);
   if (msg.t === "selectSlot") selectSlot(client, Number(msg.slot));
   if (msg.t === "fillAi") fillRoomWithAi(client);
   if (msg.t === "input") {
@@ -459,22 +462,73 @@ function replayRoom(client) {
     send(client, { t: "error", message: "Only players can replay" });
     return;
   }
-  if (room.status !== "ended") {
-    send(client, { t: "error", message: "Replay is available after game over" });
-    return;
-  }
   if (!canReplayRoom(room, clients)) {
     send(client, { t: "error", message: "Replay is unavailable because a player left" });
     return;
   }
   if (room.replayStarting) return;
+
+  const humanPlayers = room.players.filter((p) => !p.bot && !p.disconnected && clients.has(p.clientId));
+  const res = evaluateRematchRequest(room, client.id, humanPlayers);
+
+  if (!res.ok) {
+    send(client, { t: "error", message: res.error || "Cannot replay" });
+    return;
+  }
+
+  const recipients = [...room.players.map((p) => clients.get(p.clientId)).filter(Boolean), ...room.spectators];
+
+  if (!res.immediate) {
+    broadcast(recipients, {
+      t: "rematchStatus",
+      code: room.code,
+      acceptedBy: player.name,
+      acceptedCount: res.acceptedCount,
+      totalNeeded: res.totalNeeded,
+      timeLeft: res.timeLeft
+    });
+
+    if (!room.rematchTimer) {
+      room.rematchTimer = setTimeout(() => {
+        if (!room) return;
+        room.rematchConsent?.clear();
+        room.rematchTimer = null;
+        broadcast(recipients, {
+          t: "rematchExpired",
+          code: room.code,
+          message: "Rematch request expired."
+        });
+      }, 15000);
+    }
+    return;
+  }
+
+  if (room.rematchTimer) {
+    clearTimeout(room.rematchTimer);
+    room.rematchTimer = null;
+  }
   room.replayStarting = true;
   startRoom(room);
-  const recipients = [...room.players.map((p) => clients.get(p.clientId)).filter(Boolean), ...room.spectators];
   broadcast(recipients, { t: "replayStarted", code: room.code, mode: room.mode });
   publishState(room, performance.now(), true);
   broadcastRooms();
   room.replayStarting = false;
+}
+
+function handleCheer(client, emoji) {
+  const room = client.room;
+  if (!room) return;
+  const check = validateCheer(emoji, client.lastCheerAt);
+  if (!check.ok) return;
+  client.lastCheerAt = performance.now();
+  const recipients = [...room.players.map((p) => clients.get(p.clientId)).filter(Boolean), ...room.spectators];
+  broadcast(recipients, {
+    t: "cheer",
+    code: room.code,
+    emoji,
+    from: client.name || "Spectator",
+    at: client.lastCheerAt
+  });
 }
 
 function addPlayer(room, client, assignment = null) {
@@ -613,6 +667,15 @@ function startingX(room, team) {
 function leaveRoom(client) {
   const room = client.room;
   if (!room) return;
+  const declined = handlePlayerLeaveRematch(room, client.id);
+  if (declined) {
+    const remaining = [...room.players.map((p) => clients.get(p.clientId)).filter(Boolean), ...room.spectators];
+    broadcast(remaining, {
+      t: "rematchDeclined",
+      code: room.code,
+      message: `${client.name || "A player"} left the room.`
+    });
+  }
   room.players = room.players.filter((p) => p.clientId !== client.id);
   room.spectators = room.spectators.filter((s) => s.id !== client.id);
   client.room = null;

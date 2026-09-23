@@ -25,6 +25,7 @@ export function createPlayFlow({ elements, actions }) {
     quick1,
     quick2,
     quickBtn,
+    quickWarmupBtn,
     roomCode,
     roomLiveTab,
     roomsRoot,
@@ -59,6 +60,10 @@ export function createPlayFlow({ elements, actions }) {
     quickBtn.addEventListener("click", () => {
       setStatus(`Finding a ${mode} match...`);
       actions.quick(mode);
+    });
+    quickWarmupBtn?.addEventListener("click", () => {
+      setStatus(`Finding a ${mode} match (AI warmup active)...`);
+      actions.quickWarmup?.(mode);
     });
     browseRoomsBtn.addEventListener("click", () => show("rooms"));
     privateRoomBtn.addEventListener("click", () => show("private"));

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.9.0] - 2026-09-23
+
+### Highlights
+- Mutual Rematch Consent Flow: Symmetrical 15-second mutual acceptance countdown for 2-player human matches with instant room reset upon dual consent, leave-to-decline feedback, and instant zero-wait replay in solo AI practice.
+- Spectator Cheers & Live Reactions: Real-time floating spectator emojis (`👏`, `🔥`, `⚡`, `🚀`, `🎯`) with server rate-limiting, cross-gateway pub/sub distribution, and animated canvas particle rendering.
+- Background AI Warmup Matchmaking: Instant on-court practice while queueing for online opponents, with seamless hot-swap transition into the multiplayer room when a match is found.
+- Direct Link Room Sharing: Web Share API integration with automatic fallback to clipboard copy, deep-link URL parameter joining (`?join=CODE&role=player`), and frictionless cross-platform game invites.
+
+### Added
+- Rematch consent evaluation engine in `server/src/rematch.js` (`evaluateRematchRequest`, `handlePlayerLeaveRematch`).
+- Spectator cheer system and rate limiting in `server/src/cheer.js`.
+- Spectator cheers UI toolbar in `client/public/index.html` and sleek CSS pill styling in `client/public/styles.css`.
+- Upward floating emoji particle rendering in `client/src/rendering/renderer.js`.
+- "Warmup while searching" instant court entry button in `client/public/index.html` and background queue coordinator in `client/src/main.js` and `client/src/ui/play-flow.js`.
+- Deep-link URL parameter parsing (`?join=CODE&role=player`) and room auto-joining in `client/src/main.js`.
+- Unit test suites in `tests/unit/rematch-consent.test.js` and `tests/unit/cheer.test.js`.
+- Playwright E2E browser tests in `tests/e2e/monorally.spec.js` validating rematch consent banner and spectator cheer toolbar rendering.
+
+### Changed
+- Unified server (`server/src/index.js`), distributed worker (`server/src/services/worker-service.js`), and room lifecycle (`server/src/room-lifecycle.js`) upgraded to support mutual rematch consent states (`rematch_requested`, `rematch_declined`).
+- Distributed gateway (`server/src/services/gateway-service.js`) and unified server updated to dispatch spectator cheer events over the message bus.
+- Room sharing updated to use Web Share API (`navigator.share`) with automatic clipboard copy fallback.
+
 ## [v1.8.0] - 2026-09-23
 
 ### Highlights

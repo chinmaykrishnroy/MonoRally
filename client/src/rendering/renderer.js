@@ -228,6 +228,22 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     for (let i = state.effects.length - 1; i >= 0; i -= 1) {
       const effect = state.effects[i];
       const progress = clamp((effectNow - effect.createdAt) / effect.duration, 0, 1);
+      if (effect.type === "cheer") {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, (1 - progress) * 0.95);
+        ctx.font = "26px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const cheerY = effect.y - progress * 140;
+        const cheerX = effect.x + progress * (effect.driftX || 0);
+        ctx.fillText(effect.emoji, cheerX, cheerY);
+        ctx.font = "11px Consolas, monospace";
+        ctx.fillStyle = fg;
+        ctx.fillText(effect.from, cheerX, cheerY + 20);
+        ctx.restore();
+        if (progress >= 1) state.effects.splice(i, 1);
+        continue;
+      }
       ctx.globalAlpha = 1 - progress;
       ctx.strokeStyle = effect.highEnergy && !inverted ? effectColors.accent : fg;
       ctx.lineWidth = effect.highEnergy ? 3 : 2;

@@ -238,6 +238,19 @@ export class GatewayService {
       return;
     }
 
+    if (msg.t === "cheer") {
+      if (client.roomCode) {
+        this.bus.publish(`room.${client.roomCode}.command`, {
+          action: "cheer",
+          clientId: client.id,
+          gatewayId: this.gatewayId,
+          emoji: msg.emoji,
+          name: client.name
+        });
+      }
+      return;
+    }
+
     if (msg.t === "input") {
       this.handleInput(client, Number(msg.x), Number.isInteger(msg.sequence) ? msg.sequence : null, Number.isInteger(msg.serverTime) ? msg.serverTime : null);
       return;
