@@ -523,6 +523,15 @@ function handleServer(msg) {
   if (clock.handle(msg)) return;
   if (msg.t === "hello") state.clientId = msg.id;
   if (msg.t === "quickWait") playFlow.setStatus(`Finding a ${msg.mode || state.quickMode} quick match...`);
+  if (msg.t === "quickWarmup") {
+    if (state.searchingQuick && !state.localGame) {
+      startLocal(`Searching ${msg.mode || state.quickSearchingMode || state.quickMode} · AI Warmup`);
+      statusEl.textContent = "AI Warmup active. Connecting automatically when opponent is found...";
+      networkBadge.hidden = false;
+      networkBadge.textContent = "SEARCHING...";
+      networkBadge.dataset.quality = "fair";
+    }
+  }
   if (msg.t === "quickFallback") playFlow.setStatus("AI players filled the empty seats.");
   if (msg.t === "matched") playFlow.setStatus(`Match found. Room ${msg.code}.`);
   if (msg.t === "roomCreated") {
@@ -550,50 +559,69 @@ function handleServer(msg) {
     return;
   }
   if (msg.t === "joined") {
-    if (state.searchingQuick) {
-      state.searchingQuick = false;
-      state.localGame = null;
-    }
-    playFlow.finishJoin();
-    state.online = true;
-    state.local = false;
-    state.role = msg.role;
-    state.team = msg.team || "spectator";
-    state.slot = Number.isInteger(msg.slot) ? msg.slot : 0;
-    state.room = msg.code;
-    state.roster = [];
-    state.playerScores.clear();
-    state.thunderDone = false;
-    state.gameOverSoundFor = "";
-    state.netBuffer = [];
-    state.lastNetState = onlinePlaceholder(msg.mode);
-    state.replayRecorder.start({
-      mode: msg.mode || "1v1",
-      missLimit: msg.mode === "2v2" ? 8 : 5,
-      players: [
-        { name: nameInput.value.trim() || "you", team: state.team },
-        { name: "opponent", team: state.team === "bottom" ? "top" : "bottom" }
-      ]
-    });
-    state.lastHitStamp = 0;
-    state.lastPowerStamp = "";
-    state.lastMissTotal = 0;
-    state.lastBumpSignature = "";
-    state.inputX = 0.5;
-    state.predictedPaddleX = W / 2;
-    state.predictedPaddleVx = 0;
-    if (msg.role === "player") saveResumeRoom(msg.code);
-    showGame(msg.role === "spectator" ? `Spectating · ${msg.mode}` : msg.mode);
-    roomBadge.hidden = false;
-    roomValue.textContent = msg.code;
-    networkBadge.hidden = false;
-    copyRoomGameBtn.hidden = msg.role !== "player";
-    if (spectatorBar) spectatorBar.classList.toggle("hidden", msg.role !== "spectator");
-    statusEl.textContent = msg.role === "spectator" ? "Spectating." : "Waiting for players...";
-    if (state.autoFillAi && msg.role === "player" && msg.mode === "2v2") {
-      state.autoFillAi = false;
-      send({ t: "fillAi" });
-      statusEl.textContent = "Preparing AI players...";
+    const doJoin = () => {
+      if (state.searchingQuick) {
+        state.searchingQuick = false;
+        state.localGame = null;
+      }
+      playFlow.finishJoin();
+      state.online = true;
+      state.local = false;
+      state.role = msg.role;
+      state.team = msg.team || "spectator";
+      state.slot = Number.isInteger(msg.slot) ? msg.slot : 0;
+      state.room = msg.code;
+      state.roster = [];
+      state.playerScores.clear();
+      state.thunderDone = false;
+      state.gameOverSoundFor = "";
+      state.netBuffer = [];
+      state.lastNetState = onlinePlaceholder(msg.mode);
+      state.replayRecorder.start({
+        mode: msg.mode || "1v1",
+        missLimit: msg.mode === "2v2" ? 8 : 5,
+        players: [
+          { name: nameInput.value.trim() || "you", team: state.team },
+          { name: "opponent", team: state.team === "bottom" ? "top" : "bottom" }
+        ]
+      });
+      state.lastHitStamp = 0;
+      state.lastPowerStamp = "";
+      state.lastMissTotal = 0;
+      state.lastBumpSignature = "";
+      state.inputX = 0.5;
+      state.predictedPaddleX = W / 2;
+      state.predictedPaddleVx = 0;
+      if (msg.role === "player") saveResumeRoom(msg.code);
+      showGame(msg.role === "spectator" ? `Spectating · ${msg.mode}` : msg.mode);
+      roomBadge.hidden = false;
+      roomValue.textContent = msg.code;
+      networkBadge.hidden = false;
+      copyRoomGameBtn.hidden = msg.role !== "player";
+      if (spectatorBar) spectatorBar.classList.toggle("hidden", msg.role !== "spectator");
+      statusEl.textContent = msg.role === "spectator" ? "Spectating." : "Waiting for players...";
+      if (state.autoFillAi && msg.role === "player" && msg.mode === "2v2") {
+        state.autoFillAi = false;
+        send({ t: "fillAi" });
+        statusEl.textContent = "Preparing AI players...";
+      }
+    };
+
+    if (state.searchingQuick && state.localGame && typeof state.localGame.isRallyActive === "function" && state.localGame.isRallyActive()) {
+      statusEl.textContent = "Opponent found! Finishing point...";
+      let finished = false;
+      const finishOnce = () => {
+        if (finished) return;
+        finished = true;
+        doJoin();
+      };
+      const safetyTimer = window.setTimeout(finishOnce, 1500);
+      state.localGame.onRallyEnd = () => {
+        window.clearTimeout(safetyTimer);
+        finishOnce();
+      };
+    } else {
+      doJoin();
     }
   }
   if (msg.t === "state") {

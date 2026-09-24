@@ -512,10 +512,11 @@ export async function startUnifiedNode(infra, options = {}) {
     const team = room.mode === "2v2" ? (slot < 2 ? "bottom" : "top") : slot === 0 ? "bottom" : "top";
     const id = `bot-${room.code}-${slot}`;
     const x = room.mode === "2v2" ? startingXForSlot(slot) : W / 2;
+    const botName = name.startsWith("[BOT]") ? name : `[BOT] ${name}`;
     room.players.push({
       id,
       clientId: null,
-      name,
+      name: botName,
       sessionId: "",
       bot: true,
       aiPhase: Math.random() * Math.PI * 2,

@@ -4,6 +4,7 @@ import { MemoryWorkerRegistry } from "../../server/src/redis/worker-registry.js"
 import { MemoryRoomDirectory } from "../../server/src/redis/room-directory.js";
 import { MemoryMatchmakingQueue } from "../../server/src/redis/matchmaking-queue.js";
 import {
+  createInfra,
   startGatewayNode,
   startWorkerNode,
   startMatchmakerNode,
@@ -161,5 +162,52 @@ describe("P0 - SERVICE_ROLE Runtime Component Isolation", () => {
     } finally {
       await node.stop();
     }
+  });
+
+  describe("P0 - Distributed Production Message Bus Enforcement", () => {
+    it("rejects MemoryBus for distributed production roles (gateway, worker, matchmaker)", async () => {
+      const mockRedis = { status: "ready", get: async () => null, set: async () => "OK" };
+
+      for (const role of ["gateway", "worker", "matchmaker"]) {
+        // Attempting to start distributed role with busType="memory" without injected bus
+        await expect(
+          createInfra({
+            role,
+            isDistributed: true,
+            busType: "memory",
+            redis: mockRedis,
+            pool: null
+          })
+        ).rejects.toThrow(/Fatal: BUS_TYPE="memory" is rejected for distributed SERVICE_ROLE/);
+      }
+    });
+
+    it("permits MemoryBus for unified role in local development", async () => {
+      const infra = await createInfra({
+        role: "unified",
+        isDistributed: false,
+        busType: "memory",
+        redis: null,
+        pool: null
+      });
+      expect(infra.role).toBe("unified");
+      expect(infra.bus).toBeDefined();
+    });
+
+    it("permits explicitly injected bus for tests or custom dependencies", async () => {
+      const customBus = new MemoryBus();
+      const mockRedis = { status: "ready", ping: async () => "PONG", get: async () => null, set: async () => "OK" };
+
+      const infra = await createInfra({
+        role: "gateway",
+        isDistributed: true,
+        bus: customBus,
+        redis: mockRedis,
+        pool: null
+      });
+
+      expect(infra.role).toBe("gateway");
+      expect(infra.bus).toBe(customBus);
+    });
   });
 });

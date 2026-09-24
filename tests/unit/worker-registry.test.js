@@ -29,7 +29,7 @@ describe("WorkerRegistry (Memory Implementation)", () => {
 
   it("skips workers that have reached maximum capacity", async () => {
     await registry.registerWorkerHeartbeat({ workerId: "w1", activeRooms: 10, maxRooms: 10 });
-    await registry.registerWorkerHeartbeat({ workerId: "w2", activeRooms: 9, maxRooms: 10 });
+    await registry.registerWorkerHeartbeat({ workerId: "w2", activeRooms: 7, maxRooms: 10 });
 
     const best = await registry.getLeastLoadedWorker();
     expect(best).not.toBeNull();

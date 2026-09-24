@@ -7,7 +7,7 @@ const files = roots.flatMap(listJavaScriptFiles).sort();
 
 for (const file of files) {
   if (file.endsWith("check-syntax.js")) continue;
-  const result = spawnSync(process.execPath, ["--check", file], { stdio: "inherit" });
+  const result = spawnSync(process.execPath, ["--check", file], { stdio: ["ignore", "inherit", "inherit"] });
   if (result.status !== 0) process.exit(result.status || 1);
 }
 

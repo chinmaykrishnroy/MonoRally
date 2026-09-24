@@ -676,11 +676,13 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     for (const rect of stagingSlots()) {
       const occupant = roster.find((player) => player.slot === rect.slot);
       const isOwn = occupant?.id === state.clientId || state.slot === rect.slot;
+      const isBot = occupant?.bot || (typeof occupant?.id === "string" && occupant.id.startsWith("bot-")) || occupant?.name?.includes("[BOT]");
       const color = occupant ? (rect.team === "top" ? mid : fg) : "#444";
       roundRect(ctx, rect.x, rect.y, rect.w, rect.h, rect.h / 2, color);
       ctx.fillStyle = occupant ? (document.body.classList.contains("invert") ? "#fff" : "#000") : mid;
       ctx.font = "16px Consolas, monospace";
-      const label = occupant ? occupant.name : rect.label;
+      let label = occupant ? occupant.name : rect.label;
+      if (occupant && isBot && !label.includes("[BOT]")) label = `[BOT] ${label}`;
       ctx.fillText(label.slice(0, 16), rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
       if (isOwn) {
         ctx.strokeStyle = fg;
@@ -700,7 +702,10 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
   }
 
   function drawPaddleName(player, x, y, width, inverted) {
-    const handle = String(player.name || nameForSlot(player.slot) || "").slice(0, 16);
+    const isBot = player.bot || (typeof player.id === "string" && player.id.startsWith("bot-")) || (player.name && player.name.includes("[BOT]"));
+    let handle = String(player.name || nameForSlot(player.slot) || "");
+    if (isBot && !handle.includes("[BOT]")) handle = `[BOT] ${handle}`;
+    handle = handle.slice(0, 16);
     const visibleHandle = usesMobileVisuals() && handle.length > 8 ? `${handle.slice(0, 7)}..` : handle;
     const name = `${visibleHandle} [${Math.max(0, Number(player.score) || 0)}]`;
     if (!name) return;

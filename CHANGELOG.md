@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.12.2] - 2026-09-24
+
+### Highlights
+- Authoritative RoomDirectory Publishing: Authoritative workers reliably publish coarse room metadata across all lifecycle events (allocation, player join/leave, spectator join/leave, slot selection, AI filling, status transitions, rematch reset) and periodic lease renewals (5s), removing records on room termination.
+- Synthetic Benchmark Truthfulness: Renamed scale harness to "Synthetic Topology Benchmark", eliminated unconditional PASS assertions, computed SLO evaluation criteria strictly from observed empirical data (tick p99, connect p99, throughput, memory per court, sample count), returning `passed: boolean` and exiting non-zero on failure.
+- Fail-Closed MemoryBus Protection: Production distributed roles (`SERVICE_ROLE=gateway, worker, matchmaker`) strictly reject `BUS_TYPE=memory` or `MemoryBus` to prevent silent in-memory partitioning in multi-node clusters.
+- Gateway Routing Cache Hygiene: Gateway actively prunes stale room-to-worker cache mappings on client disconnects, when no local connections use the room, on room not found, or when a worker becomes unavailable.
+- Production NATS Topology: Split manifests into `deploy/k3s/base`, `deploy/k3s/dev` (singleton Deployment), and `deploy/k3s/production` (3-node HA StatefulSet) with `-m 8222` and containerPort 8222 for monitoring probes.
+- Worker Safe Capacity & Autoscaling Signals: Matchmaker allocations are strictly capped at 85% safe worker capacity (`Math.floor(capacity * 0.85)`) to prevent overloading while HPA scales up; exposed event-loop lag, gateway outbound bytes/sec, and send-buffer pressure in Prometheus `/metrics`.
+- Quick Match Population & Seamless Warmup: Players waiting in queue receive `{ t: "quickWarmup" }` on timeout while remaining in the matchmaking queue; upon finding a human opponent, active local rallies finish smoothly before transitioning to PvP; bots are identified with `[BOT]`.
+
 ## [v1.12.1] - 2026-09-24
 
 ### Highlights

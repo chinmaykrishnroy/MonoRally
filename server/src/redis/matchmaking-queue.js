@@ -186,6 +186,28 @@ export class RedisMatchmakingQueue {
     return JSON.parse(raw);
   }
 
+  async getTimedOutCandidates(mode, fallbackMs) {
+    const queueKey = this._queueKey(mode);
+    const prefix = "mm:entry:";
+    const now = Date.now();
+    const cutoff = now - fallbackMs;
+    const ids = await this.redis.zrangebyscore(queueKey, "-inf", cutoff);
+    if (!ids || ids.length === 0) return [];
+    const keys = ids.map((id) => prefix + id);
+    const entries = await this.redis.mget(...keys);
+    const candidates = [];
+    for (const raw of entries) {
+      if (raw) {
+        try {
+          candidates.push(JSON.parse(raw));
+        } catch {
+          // ignore corrupted
+        }
+      }
+    }
+    return candidates;
+  }
+
   async getQueueDepth(mode) {
     const queueKey = this._queueKey(mode);
     return await this.redis.zcard(queueKey);
@@ -255,6 +277,19 @@ export class MemoryMatchmakingQueue {
       }
     }
     return null;
+  }
+
+  async getTimedOutCandidates(mode, fallbackMs) {
+    const q = this.queues[mode];
+    if (!q) return [];
+    const now = Date.now();
+    const results = [];
+    for (const entry of q.values()) {
+      if (now - entry.enqueuedAt >= fallbackMs) {
+        results.push(entry);
+      }
+    }
+    return results;
   }
 
   async getQueueDepth(mode) {

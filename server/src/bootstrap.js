@@ -41,6 +41,7 @@ import { createLeaderboard } from "./leaderboard.js";
 import { metrics } from "./metrics.js";
 import { startUnifiedNode } from "./unified.js";
 import { createEventBus } from "./bus/index.js";
+import { MemoryBus } from "./bus/memory-bus.js";
 import { createWorkerRegistry } from "./redis/worker-registry.js";
 import { createRoomDirectory } from "./redis/room-directory.js";
 import { createMatchmakingQueue } from "./redis/matchmaking-queue.js";
@@ -50,17 +51,21 @@ import { MatchmakerService } from "./services/matchmaker-service.js";
 
 export async function createInfra(options = {}) {
   const role = options.role || SERVICE_ROLE;
-  const isDistributed = role !== "unified" && process.env.NODE_ENV !== "test";
+  const isDistributed = role !== "unified" && (options.isDistributed !== undefined ? options.isDistributed : process.env.NODE_ENV !== "test");
 
   // Enforce Fail-Closed behavior for distributed production roles
   if (isDistributed) {
-    if (DATA_BACKEND === "postgres" && !DATABASE_URL) {
+    if (DATA_BACKEND === "postgres" && !DATABASE_URL && options.pool === undefined) {
       throw new Error(`[bootstrap] Fatal: DATABASE_URL is required for distributed SERVICE_ROLE="${role}"`);
     }
     if (!REDIS_URL && !options.redis) {
       throw new Error(`[bootstrap] Fatal: REDIS_URL is required for distributed SERVICE_ROLE="${role}"`);
     }
-    if (BUS_TYPE === "nats" && !NATS_URL && !options.bus) {
+    const busType = options.busType || BUS_TYPE;
+    if (busType === "memory" && !options.bus) {
+      throw new Error(`[bootstrap] Fatal: BUS_TYPE="memory" is rejected for distributed SERVICE_ROLE="${role}". Distributed production roles require a real external message bus.`);
+    }
+    if (busType === "nats" && !NATS_URL && !options.bus) {
       throw new Error(`[bootstrap] Fatal: NATS_URL is required for distributed SERVICE_ROLE="${role}" with BUS_TYPE=nats`);
     }
   }
@@ -68,10 +73,14 @@ export async function createInfra(options = {}) {
   const pool = options.pool !== undefined ? options.pool : (DATABASE_URL ? createDatabasePool(DATABASE_URL) : null);
   const redis = options.redis !== undefined ? options.redis : (REDIS_URL ? createRedisClient(REDIS_URL) : null);
   const bus = options.bus || (await createEventBus({
-    type: BUS_TYPE,
+    type: options.busType || BUS_TYPE,
     url: NATS_URL,
     allowFallback: !isDistributed
   }));
+
+  if (isDistributed && !options.bus && bus instanceof MemoryBus) {
+    throw new Error(`[bootstrap] Fatal: BUS_TYPE="memory" is rejected for distributed SERVICE_ROLE="${role}". Distributed production roles require a real external message bus.`);
+  }
 
   // Verify Redis connectivity in distributed roles
   if (isDistributed && redis) {

@@ -159,7 +159,9 @@ export function writeFrame(socket, payload, opcode = 1) {
     header.writeUInt32BE(0, 2);
     header.writeUInt32BE(length, 6);
   }
-  socket.write(Buffer.concat([header, payload]));
+  const frame = Buffer.concat([header, payload]);
+  metrics.recordOutboundBytes(frame.length);
+  socket.write(frame);
 }
 
 export function send(client, message) {

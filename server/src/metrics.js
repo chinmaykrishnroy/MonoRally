@@ -1,3 +1,5 @@
+import { monitorEventLoopDelay } from "node:perf_hooks";
+
 /**
  * MonoRally Performance Metrics & Telemetry Registry
  * Lightweight, zero-allocation sliding-window metric collection and Prometheus exposition.
@@ -63,6 +65,10 @@ class RollingReservoir {
 
 export class MetricsRegistry {
   constructor() {
+    this.eventLoopDelay = typeof monitorEventLoopDelay === "function" ? monitorEventLoopDelay({ resolution: 20 }) : null;
+    if (this.eventLoopDelay) {
+      this.eventLoopDelay.enable();
+    }
     this.reset();
   }
 
@@ -73,6 +79,8 @@ export class MetricsRegistry {
     this.matchmakerQueueLength = 0;
     this.workerCapacityRatio = 0;
     this.matchesCompletedTotal = 0;
+    this.outboundBytesTotal = 0;
+    this.sendBufferPressureBytes = 0;
 
     this.messages = {
       "binary:in": 0,
@@ -86,6 +94,9 @@ export class MetricsRegistry {
     this.matchmakerWaitMs = new RollingReservoir(1024);
 
     this.initialCpu = process.cpuUsage ? process.cpuUsage() : { user: 0, system: 0 };
+    if (this.eventLoopDelay && typeof this.eventLoopDelay.reset === "function") {
+      this.eventLoopDelay.reset();
+    }
   }
 
   // --- Recording methods ---
@@ -138,6 +149,29 @@ export class MetricsRegistry {
     this.matchmakerWaitMs.record(waitMs);
   }
 
+  recordOutboundBytes(bytes) {
+    this.outboundBytesTotal += Math.max(0, Number(bytes) || 0);
+  }
+
+  setSendBufferPressure(bytes) {
+    this.sendBufferPressureBytes = Math.max(0, Number(bytes) || 0);
+  }
+
+  getEventLoopLagStats() {
+    if (!this.eventLoopDelay) {
+      return { min: 0, max: 0, mean: 0, p50: 0, p90: 0, p99: 0 };
+    }
+    const toMs = (ns) => Math.round((Number(ns) / 1e6) * 1000) / 1000;
+    return {
+      min: toMs(this.eventLoopDelay.min),
+      max: toMs(this.eventLoopDelay.max),
+      mean: toMs(this.eventLoopDelay.mean),
+      p50: toMs(this.eventLoopDelay.percentile(50)),
+      p90: toMs(this.eventLoopDelay.percentile(90)),
+      p99: toMs(this.eventLoopDelay.percentile(99))
+    };
+  }
+
   // --- Aggregation & Profiles ---
 
   getMemoryProfile() {
@@ -185,11 +219,14 @@ export class MetricsRegistry {
       },
       traffic: {
         messages: { ...this.messages },
+        outboundBytesTotal: this.outboundBytesTotal,
+        sendBufferPressureBytes: this.sendBufferPressureBytes,
         matchesCompleted: this.matchesCompletedTotal
       },
       latencies: {
         tickDurationMs: this.tickDurationMs.getStats(),
-        clientRttMs: this.clientRttMs.getStats()
+        clientRttMs: this.clientRttMs.getStats(),
+        eventLoopLagMs: this.getEventLoopLagStats()
       },
       resources: {
         memory: mem,
@@ -287,6 +324,22 @@ export class MetricsRegistry {
       "# HELP monorally_process_cpu_system_seconds_total Total system CPU time spent in seconds.",
       "# TYPE monorally_process_cpu_system_seconds_total counter",
       `monorally_process_cpu_system_seconds_total ${cpu.systemSeconds}`,
+      "",
+      "# HELP monorally_event_loop_lag_ms Event loop delay in milliseconds.",
+      "# TYPE monorally_event_loop_lag_ms summary",
+      `monorally_event_loop_lag_ms{quantile="0.5"} ${this.getEventLoopLagStats().p50}`,
+      `monorally_event_loop_lag_ms{quantile="0.9"} ${this.getEventLoopLagStats().p90}`,
+      `monorally_event_loop_lag_ms{quantile="0.99"} ${this.getEventLoopLagStats().p99}`,
+      `monorally_event_loop_lag_ms{quantile="1.0"} ${this.getEventLoopLagStats().max}`,
+      `monorally_event_loop_lag_ms_mean ${this.getEventLoopLagStats().mean}`,
+      "",
+      "# HELP monorally_outbound_bytes_total Total outbound payload bytes sent.",
+      "# TYPE monorally_outbound_bytes_total counter",
+      `monorally_outbound_bytes_total ${this.outboundBytesTotal}`,
+      "",
+      "# HELP monorally_send_buffer_pressure_bytes Total buffered outbound bytes across active connections.",
+      "# TYPE monorally_send_buffer_pressure_bytes gauge",
+      `monorally_send_buffer_pressure_bytes ${this.sendBufferPressureBytes}`,
       ""
     ];
 

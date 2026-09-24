@@ -30,7 +30,8 @@ export function createBroadcasters({ checkPresenceWin, clients, rooms, stateMech
         name: p.name,
         team: p.team,
         slot: p.slot,
-        score: p.returns || 0
+        score: p.returns || 0,
+        bot: Boolean(p.bot)
       }))
     });
   }

@@ -138,9 +138,12 @@ export class WorkerService {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.leaseTimer) clearInterval(this.leaseTimer);
 
-    // Release all room leases
+    // Release all room leases and clean directory
     for (const roomCode of this.rooms.keys()) {
       await this.workerRegistry.releaseRoomLease(roomCode, this.workerId);
+      if (this.roomDirectory) {
+        await this.roomDirectory.removeRoom(roomCode).catch(() => {});
+      }
     }
     this.rooms.clear();
 
@@ -150,6 +153,26 @@ export class WorkerService {
       sub.unsubscribe();
     }
     this.subscriptions = [];
+  }
+
+  async syncRoomDirectory(room) {
+    if (!this.roomDirectory || !room) return;
+    try {
+      const coarseMeta = {
+        code: room.code,
+        workerId: this.workerId,
+        mode: room.mode,
+        status: room.status,
+        visibility: room.visibility || "public",
+        playerCount: room.players ? room.players.filter((p) => !p.disconnected).length : 0,
+        maxPlayers: room.maxPlayers,
+        spectatorCount: room.spectators ? room.spectators.length : 0,
+        createdAt: room.createdAt || Date.now()
+      };
+      await this.roomDirectory.upsertRoom(coarseMeta);
+    } catch {
+      // Coarse directory sync error must not crash the simulation
+    }
   }
 
   async heartbeat() {
@@ -202,8 +225,9 @@ export class WorkerService {
   }
 
   async renewLeases() {
-    for (const roomCode of this.rooms.keys()) {
-      await this.workerRegistry.renewRoomLease(roomCode, this.workerId, 15);
+    for (const room of this.rooms.values()) {
+      await this.workerRegistry.renewRoomLease(room.code, this.workerId, 15);
+      await this.syncRoomDirectory(room);
     }
   }
 
@@ -244,6 +268,8 @@ export class WorkerService {
       this.broadcastRoster(room);
       this.publishState(room, performance.now(), true);
     }
+
+    await this.syncRoomDirectory(room);
 
     return { ok: true, roomCode: room.code, workerId: this.workerId };
   }
@@ -334,6 +360,7 @@ export class WorkerService {
         return;
       }
       room.spectators.push({ id: clientId, clientId, gatewayId });
+      this.syncRoomDirectory(room);
       this.bus.publish(`gateway.${gatewayId}.client.${clientId}.send`, {
         t: "joined",
         code: room.code,
@@ -368,6 +395,7 @@ export class WorkerService {
 
     this.broadcastRoster(room);
     this.publishState(room, performance.now(), true);
+    this.syncRoomDirectory(room);
   }
 
   handleLeave(room, clientId) {
@@ -378,6 +406,7 @@ export class WorkerService {
       player.clientId = null;
       this.broadcastRoster(room);
       this.publishState(room, performance.now(), true);
+      this.syncRoomDirectory(room);
       return;
     }
 
@@ -396,6 +425,7 @@ export class WorkerService {
     }
     this.broadcastRoster(room);
     this.publishState(room, performance.now(), true);
+    this.syncRoomDirectory(room);
   }
 
   handleSelectSlot(room, clientId, gatewayId, slot) {
@@ -426,6 +456,7 @@ export class WorkerService {
       this.startRoom(room);
     }
     this.publishState(room, performance.now(), true);
+    this.syncRoomDirectory(room);
   }
 
   handleFillAi(room, clientId) {
@@ -442,6 +473,7 @@ export class WorkerService {
       this.startRoom(room);
     }
     this.publishState(room, performance.now(), true);
+    this.syncRoomDirectory(room);
   }
 
   handleReplay(room, clientId) {
@@ -487,6 +519,7 @@ export class WorkerService {
     this.startRoom(room);
     this.broadcastRoomEvent(room, { t: "replayStarted", code: room.code, mode: room.mode });
     this.publishState(room, performance.now(), true);
+    this.syncRoomDirectory(room);
     room.replayStarting = false;
   }
 
@@ -589,11 +622,12 @@ export class WorkerService {
     const team = room.mode === "2v2" ? (slot < 2 ? "bottom" : "top") : slot === 0 ? "bottom" : "top";
     const id = `bot-${room.code}-${slot}`;
     const x = room.mode === "2v2" ? startingXForSlot(slot) : W / 2;
+    const botName = name.startsWith("[BOT]") ? name : `[BOT] ${name}`;
     room.players.push({
       id,
       clientId: null,
       gatewayId: null,
-      name,
+      name: botName,
       sessionId: "",
       bot: true,
       aiPhase: Math.random() * Math.PI * 2,
@@ -675,7 +709,8 @@ export class WorkerService {
         name: p.name,
         team: p.team,
         slot: p.slot,
-        score: p.returns || 0
+        score: p.returns || 0,
+        bot: Boolean(p.bot)
       }))
     };
     this.broadcastRoomEvent(room, message);
@@ -720,6 +755,7 @@ export class WorkerService {
       playerRepository: this.playerRepository,
       matchRepository: this.matchRepository
     });
+    this.syncRoomDirectory(room);
   }
 
   recordTick(duration) {
@@ -751,6 +787,9 @@ export class WorkerService {
       if (this.draining || endedDuration > 15000) {
         this.rooms.delete(room.code);
         this.workerRegistry.releaseRoomLease(room.code, this.workerId);
+        if (this.roomDirectory) {
+          this.roomDirectory.removeRoom(room.code).catch(() => {});
+        }
         this.recordTick(performance.now() - tickStart);
         return;
       }
@@ -790,6 +829,7 @@ export class WorkerService {
       };
     }
 
+    const prevStatus = room.status;
     advanceBalls(room, now, dt);
     checkWin(room, now);
     finalizeMatch(room, {
@@ -797,6 +837,9 @@ export class WorkerService {
       playerRepository: this.playerRepository,
       matchRepository: this.matchRepository
     });
+    if (prevStatus !== room.status) {
+      this.syncRoomDirectory(room);
+    }
 
     if (room.status === "running" && room.pendingCountdown && room.balls.length === 0) {
       beginCountdown(room, now, room.mode === "2v2" ? "both" : room.lastMissTeam || "top");

@@ -61,6 +61,19 @@ export class RedisWorkerRegistry {
     await pipeline.exec();
   }
 
+  async isWorkerAvailable(workerId) {
+    if (!workerId) return false;
+    const key = `worker:${workerId}`;
+    const raw = await this.redis.get(key);
+    if (!raw) return false;
+    try {
+      const data = JSON.parse(raw);
+      return data.status === "ready" || data.status === "draining";
+    } catch {
+      return false;
+    }
+  }
+
   async getActiveWorkers() {
     const workerIds = await this.redis.smembers("workers:active");
     if (!workerIds || workerIds.length === 0) return [];
@@ -99,7 +112,8 @@ export class RedisWorkerRegistry {
       if (w.status === "draining") continue; // Exclude draining workers from matchmaking
       const activeRooms = w.activeRooms || 0;
       const capacity = w.maxRooms || maxRoomsPerWorker;
-      if (activeRooms < capacity) {
+      const safeCapacity = Math.max(1, Math.floor(capacity * 0.85));
+      if (activeRooms < safeCapacity) {
         if (!best || activeRooms < (best.activeRooms || 0)) {
           best = w;
         }
@@ -169,6 +183,17 @@ export class MemoryWorkerRegistry {
     this.workers.delete(workerId);
   }
 
+  async isWorkerAvailable(workerId) {
+    if (!workerId) return false;
+    const entry = this.workers.get(workerId);
+    if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.workers.delete(workerId);
+      return false;
+    }
+    return entry.info.status === "ready" || entry.info.status === "draining";
+  }
+
   async getActiveWorkers() {
     const now = Date.now();
     const active = [];
@@ -190,7 +215,8 @@ export class MemoryWorkerRegistry {
       if (w.status === "draining") continue; // Exclude draining workers
       const activeRooms = w.activeRooms || 0;
       const capacity = w.maxRooms || maxRoomsPerWorker;
-      if (activeRooms < capacity) {
+      const safeCapacity = Math.max(1, Math.floor(capacity * 0.85));
+      if (activeRooms < safeCapacity) {
         if (!best || activeRooms < (best.activeRooms || 0)) {
           best = w;
         }

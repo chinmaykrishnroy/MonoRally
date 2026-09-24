@@ -73,21 +73,4 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          body: |
-            ## Highlights
 
-            - Fixed frame-dependent false misses caused by adjudicating before the ball entered the rounded paddle collider.
-            - Preserved each ball's complete paddle-approach path for authoritative late-input collision checks.
-            - Unified rounded collision geometry across the server, online prediction, practice mode, and rendered hitboxes.
-            - Expanded the compact input packet to 14 bytes so authority can validate the paddle position and velocity the player actually saw.
-            - Stopped trusting client timestamps until clock synchronization is established.
-            - Froze elapsed time at match end and cancelled inversion, shake, rumble audio, and haptics on end or leave.
-            - Added frame-phase, rounded-edge, input reconstruction, timer, and inversion regression coverage.
-
-            ## Container image
-
-            ```text
-            ghcr.io/chinmaykrishnroy/monorally:${{ github.ref_name }}
-            ```
-
-            Also tagged with the release version without `v`, the major/minor version, and `latest`. Multi-architecture image: `linux/amd64`, `linux/arm64`.

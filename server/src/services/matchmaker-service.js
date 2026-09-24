@@ -15,6 +15,7 @@ export class MatchmakerService {
     this.fallbackMs = fallbackMs;
     this.subscriptions = [];
     this.pollTimer = null;
+    this.warmedUpClients = new Set();
   }
 
   async start() {
@@ -50,7 +51,7 @@ export class MatchmakerService {
       )
     );
 
-    // Periodic check for timed-out players to fill with AI bots
+    // Periodic check for timed-out players to enter warmup while remaining in queue
     this.pollTimer = setInterval(async () => {
       await this.checkFallbackTimeouts();
     }, 1000);
@@ -61,6 +62,7 @@ export class MatchmakerService {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+    this.warmedUpClients.clear();
     for (const sub of this.subscriptions) {
       sub.unsubscribe();
     }
@@ -78,6 +80,7 @@ export class MatchmakerService {
       const now = Date.now();
       for (const p of matched) {
         if (p.enqueuedAt) metrics.recordMatchmakerWait(now - p.enqueuedAt);
+        this.warmedUpClients.delete(p.clientId);
       }
       const totalDepth = await this.queue.getTotalDepth();
       metrics.setMatchmakerQueue(totalDepth);
@@ -90,6 +93,7 @@ export class MatchmakerService {
   }
 
   async dequeue(clientId) {
+    this.warmedUpClients.delete(clientId);
     await this.queue.dequeue(clientId);
     const totalDepth = await this.queue.getTotalDepth();
     metrics.setMatchmakerQueue(totalDepth);
@@ -97,12 +101,16 @@ export class MatchmakerService {
 
   async checkFallbackTimeouts() {
     for (const mode of ["1v1", "2v2"]) {
-      const timedOut = await this.queue.claimTimedOut(mode, this.fallbackMs);
-      if (timedOut) {
-        if (timedOut.enqueuedAt) metrics.recordMatchmakerWait(Date.now() - timedOut.enqueuedAt);
-        const totalDepth = await this.queue.getTotalDepth();
-        metrics.setMatchmakerQueue(totalDepth);
-        await this.dispatchMatch(mode, [timedOut], true);
+      const candidates = await this.queue.getTimedOutCandidates(mode, this.fallbackMs);
+      for (const candidate of candidates) {
+        if (!this.warmedUpClients.has(candidate.clientId)) {
+          this.warmedUpClients.add(candidate.clientId);
+          // Notify client to start local AI warmup while remaining in human queue
+          await this.bus.publish(`gateway.${candidate.gatewayId}.client.${candidate.clientId}.send`, {
+            t: "quickWarmup",
+            mode
+          });
+        }
       }
     }
   }
@@ -121,6 +129,9 @@ export class MatchmakerService {
   }
 
   async dispatchMatch(mode, players, isAiFallback) {
+    for (const p of players) {
+      this.warmedUpClients.delete(p.clientId);
+    }
     const worker = await this.workerRegistry.getLeastLoadedWorker();
     const roomConfig = {
       mode,

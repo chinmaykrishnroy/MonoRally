@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monorally-worker
+  labels:
+    app.kubernetes.io/name: monorally-worker
+spec:
+  replicas: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: monorally-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: monorally-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8787"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: ghcr.io/chinmaykrishnroy/monorally:1.12.2
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "node -e \"fetch('http://127.0.0.1:8787/drain', {method:'POST'}).catch(()=>{})\""]
+          env:
+            - name: SERVICE_ROLE
+              value: "worker"
+            - name: BUS_TYPE
+              value: "nats"
+            - name: NATS_URL
+              value: "nats://monorally-nats:4222"
+            - name: DATA_BACKEND
+              value: "postgres"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: monorally-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: monorally-secrets
+                  key: redis-url
+            - name: WORKER_CAPACITY_MAX_ROOMS
+              value: "50"

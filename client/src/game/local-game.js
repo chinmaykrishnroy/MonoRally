@@ -23,6 +23,7 @@ export class LocalGame {
     this.pendingCountdown = false;
     this.lastMissTeam = null;
     this.nextBallId = 1;
+    this.onRallyEnd = null;
     this.beginCountdown("top");
   }
 
@@ -267,6 +268,11 @@ export class LocalGame {
     this.lastMissTeam = team;
     this.pendingCountdown = true;
     this.deps.playMiss();
+    this.onRallyEnd?.();
+  }
+
+  isRallyActive() {
+    return this.status === "running" && this.balls.some((b) => !b.dead) && !this.pendingCountdown;
   }
 
   beginCountdown(team) {

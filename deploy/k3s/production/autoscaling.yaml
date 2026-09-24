@@ -11,6 +11,24 @@ spec:
     name: monorally-gateway
   minReplicas: 3
   maxReplicas: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Percent
+          value: 20
+          periodSeconds: 60
+      selectPolicy: Min
   metrics:
     - type: Resource
       resource:
@@ -39,12 +57,23 @@ spec:
   minReplicas: 4
   maxReplicas: 100
   behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 10
+          periodSeconds: 15
+      selectPolicy: Max
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
         - type: Percent
           value: 10
           periodSeconds: 60
+      selectPolicy: Min
   metrics:
     - type: Resource
       resource:

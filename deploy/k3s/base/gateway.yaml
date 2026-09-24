@@ -1,30 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: monorally
+  name: monorally-gateway
   labels:
-    app.kubernetes.io/name: monorally
+    app.kubernetes.io/name: monorally-gateway
 spec:
-  replicas: 2
+  replicas: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
+      maxSurge: 2
       maxUnavailable: 0
   selector:
     matchLabels:
-      app.kubernetes.io/name: monorally
+      app.kubernetes.io/name: monorally-gateway
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: monorally
+        app.kubernetes.io/name: monorally-gateway
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8787"
         prometheus.io/path: "/metrics"
     spec:
       containers:
-        - name: monorally
+        - name: gateway
           image: ghcr.io/chinmaykrishnroy/monorally:1.12.2
           imagePullPolicy: IfNotPresent
           resources:
@@ -40,6 +40,12 @@ spec:
           env:
             - name: PORT
               value: "8787"
+            - name: SERVICE_ROLE
+              value: "gateway"
+            - name: BUS_TYPE
+              value: "nats"
+            - name: NATS_URL
+              value: "nats://monorally-nats:4222"
             - name: DATA_BACKEND
               value: "postgres"
             - name: DATABASE_URL
@@ -47,17 +53,13 @@ spec:
                 secretKeyRef:
                   name: monorally-secrets
                   key: database-url
-                  optional: true
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
                   name: monorally-secrets
                   key: redis-url
-                  optional: true
             - name: CORS_ORIGINS
               value: "https://mono.prefect-sys.online"
-            - name: HIT_PRESENTATION_DELAY_MS
-              value: "90"
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -70,17 +72,3 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: monorally
-  labels:
-    app.kubernetes.io/name: monorally
-spec:
-  selector:
-    app.kubernetes.io/name: monorally
-  ports:
-    - name: http
-      port: 80
-      targetPort: http

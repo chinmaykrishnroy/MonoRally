@@ -22,6 +22,14 @@ describe("Scale Benchmark Integration", () => {
     expect(results.performance.tickDurationMs.p99).toBeLessThan(16.6); // 60 Hz physics deadline
     expect(results.performance.tickDurationMs.sloPassed).toBe(true);
 
+    // Truthful overall passed boolean
+    expect(results.passed).toBe(true);
+    expect(results.criteria.tickP99.passed).toBe(true);
+    expect(results.criteria.connectP99.passed).toBe(true);
+    expect(results.criteria.throughput.passed).toBe(true);
+    expect(results.criteria.memoryPerCourt.passed).toBe(true);
+    expect(results.criteria.sampleCount.passed).toBe(true);
+
     // Memory footprint
     expect(results.resources.heapUsedMb).toBeGreaterThan(0);
     expect(results.resources.bytesPerRoomKb).toBeLessThan(10240); // Under 10 MB per court

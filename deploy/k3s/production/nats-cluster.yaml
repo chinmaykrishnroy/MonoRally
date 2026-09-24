@@ -10,7 +10,10 @@ spec:
   ports:
     - name: client
       port: 4222
-      targetPort: 4222
+      targetPort: client
+    - name: monitor
+      port: 8222
+      targetPort: monitor
 ---
 apiVersion: v1
 kind: Service
@@ -25,7 +28,7 @@ spec:
   ports:
     - name: cluster
       port: 6222
-      targetPort: 6222
+      targetPort: cluster
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -48,6 +51,8 @@ spec:
         - name: nats
           image: nats:2.10-alpine
           args:
+            - "-m"
+            - "8222"
             - "--cluster_name"
             - "monorally-nats-cluster"
             - "--cluster"
@@ -58,6 +63,8 @@ spec:
               containerPort: 4222
             - name: cluster
               containerPort: 6222
+            - name: monitor
+              containerPort: 8222
           resources:
             requests:
               cpu: "50m"
@@ -68,12 +75,12 @@ spec:
           livenessProbe:
             httpGet:
               path: /connz
-              port: 8222
+              port: monitor
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /varz
-              port: 8222
+              port: monitor
             initialDelaySeconds: 5
             periodSeconds: 5

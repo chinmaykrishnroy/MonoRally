@@ -43,8 +43,34 @@ export class GatewayService {
 
     this.clients = new Map(); // clientId -> client object
     this.roomWorkerMap = new Map(); // roomCode -> workerId
+    this.roomClients = new Map(); // roomCode -> Set<clientId>
     this.heartbeatTimer = null;
     this.subscriptions = [];
+  }
+
+  trackRoomClient(roomCode, clientId, workerId = null) {
+    if (!roomCode || !clientId) return;
+    let clientSet = this.roomClients.get(roomCode);
+    if (!clientSet) {
+      clientSet = new Set();
+      this.roomClients.set(roomCode, clientSet);
+    }
+    clientSet.add(clientId);
+    if (workerId) {
+      this.roomWorkerMap.set(roomCode, workerId);
+    }
+  }
+
+  untrackRoomClient(roomCode, clientId) {
+    if (!roomCode || !clientId) return;
+    const clientSet = this.roomClients.get(roomCode);
+    if (clientSet) {
+      clientSet.delete(clientId);
+      if (clientSet.size === 0) {
+        this.roomClients.delete(roomCode);
+        this.roomWorkerMap.delete(roomCode);
+      }
+    }
   }
 
   async start() {
@@ -58,7 +84,7 @@ export class GatewayService {
           if (data?.t === "matchmaker.assigned") {
             client.roomCode = data.roomCode;
             client.workerId = data.workerId;
-            this.roomWorkerMap.set(data.roomCode, data.workerId);
+            this.trackRoomClient(data.roomCode, client.id, data.workerId);
             this.bus.publish(`worker.${data.workerId}.room.${data.roomCode}.command`, {
               action: "join",
               clientId: client.id,
@@ -113,6 +139,8 @@ export class GatewayService {
       closeClient(client, 1001, "gateway shutting down");
     }
     this.clients.clear();
+    this.roomWorkerMap.clear();
+    this.roomClients.clear();
     metrics.setConnectedClients(0);
     for (const sub of this.subscriptions) {
       sub.unsubscribe();
@@ -122,21 +150,35 @@ export class GatewayService {
 
   async getWorkerForRoom(roomCode) {
     if (!roomCode) return null;
-    if (this.roomWorkerMap.has(roomCode)) return this.roomWorkerMap.get(roomCode);
+    let workerId = null;
+
     if (this.roomDirectory) {
       const meta = await this.roomDirectory.getRoom(roomCode);
       if (meta?.workerId) {
-        this.roomWorkerMap.set(roomCode, meta.workerId);
-        return meta.workerId;
+        workerId = meta.workerId;
       }
     }
-    if (this.workerRegistry) {
+    if (!workerId && this.workerRegistry) {
       const wid = await this.workerRegistry.getRoomWorker(roomCode);
       if (wid) {
-        this.roomWorkerMap.set(roomCode, wid);
-        return wid;
+        workerId = wid;
       }
     }
+
+    if (workerId) {
+      if (this.workerRegistry && typeof this.workerRegistry.isWorkerAvailable === "function") {
+        const available = await this.workerRegistry.isWorkerAvailable(workerId);
+        if (!available) {
+          this.roomWorkerMap.delete(roomCode);
+          return null;
+        }
+      }
+      this.roomWorkerMap.set(roomCode, workerId);
+      return workerId;
+    }
+
+    // Room not found or lease expired - clear stale cache
+    this.roomWorkerMap.delete(roomCode);
     return null;
   }
 
@@ -147,7 +189,7 @@ export class GatewayService {
       workerId = await this.getWorkerForRoom(client.roomCode);
       if (workerId) {
         client.workerId = workerId;
-        this.roomWorkerMap.set(client.roomCode, workerId);
+        this.trackRoomClient(client.roomCode, client.id, workerId);
       }
     }
     if (!workerId) return;
@@ -181,14 +223,16 @@ export class GatewayService {
     this.cancelQuick(client);
 
     if (client.roomCode) {
-      const workerId = client.workerId || this.roomWorkerMap.get(client.roomCode);
+      const roomCode = client.roomCode;
+      const workerId = client.workerId || this.roomWorkerMap.get(roomCode);
       if (workerId) {
-        this.bus.publish(`worker.${workerId}.room.${client.roomCode}.command`, {
+        this.bus.publish(`worker.${workerId}.room.${roomCode}.command`, {
           action: "leave",
           clientId: client.id,
           gatewayId: this.gatewayId
         });
       }
+      this.untrackRoomClient(roomCode, client.id);
       client.roomCode = null;
       client.workerId = null;
     }
@@ -207,6 +251,24 @@ export class GatewayService {
       }
       sendPing(client);
     }
+
+    // Prune stale roomWorkerMap mappings when no local connection uses the room
+    for (const roomCode of Array.from(this.roomWorkerMap.keys())) {
+      const count = this.roomClients.get(roomCode)?.size || 0;
+      if (count === 0) {
+        this.roomWorkerMap.delete(roomCode);
+        this.roomClients.delete(roomCode);
+      }
+    }
+
+    // Monitor send-buffer pressure across all active client sockets
+    let totalBufferSize = 0;
+    for (const client of this.clients.values()) {
+      if (client.socket && !client.socket.destroyed) {
+        totalBufferSize += client.socket.bufferSize || 0;
+      }
+    }
+    metrics.setSendBufferPressure(totalBufferSize);
   }
 
   async handleMessage(client, msg) {
@@ -367,7 +429,7 @@ export class GatewayService {
       if (res?.ok && res.roomCode) {
         client.roomCode = res.roomCode;
         client.workerId = res.workerId;
-        this.roomWorkerMap.set(res.roomCode, res.workerId);
+        this.trackRoomClient(res.roomCode, client.id, res.workerId);
         send(client, { t: "roomCreated", code: res.roomCode, mode });
         this.bus.publish(`worker.${res.workerId}.room.${res.roomCode}.command`, {
           action: "join",
@@ -390,11 +452,11 @@ export class GatewayService {
 
   async joinRoom(client, code, spectator = false) {
     this.leaveRoom(client);
-    client.roomCode = code;
     let workerId = await this.getWorkerForRoom(code);
     if (workerId) {
+      client.roomCode = code;
       client.workerId = workerId;
-      this.roomWorkerMap.set(code, workerId);
+      this.trackRoomClient(code, client.id, workerId);
       this.bus.publish(`worker.${workerId}.room.${code}.command`, {
         action: "join",
         clientId: client.id,
@@ -407,20 +469,23 @@ export class GatewayService {
         spectator
       });
     } else {
+      this.roomWorkerMap.delete(code);
       send(client, { t: "error", message: "Room not found or worker unavailable" });
     }
   }
 
   leaveRoom(client) {
     if (client.roomCode) {
-      const workerId = client.workerId || this.roomWorkerMap.get(client.roomCode);
+      const roomCode = client.roomCode;
+      const workerId = client.workerId || this.roomWorkerMap.get(roomCode);
       if (workerId) {
-        this.bus.publish(`worker.${workerId}.room.${client.roomCode}.command`, {
+        this.bus.publish(`worker.${workerId}.room.${roomCode}.command`, {
           action: "leave",
           clientId: client.id,
           gatewayId: this.gatewayId
         });
       }
+      this.untrackRoomClient(roomCode, client.id);
       client.roomCode = null;
       client.workerId = null;
     }

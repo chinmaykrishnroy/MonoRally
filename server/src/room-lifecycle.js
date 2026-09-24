@@ -19,6 +19,7 @@ export function createRoomLifecycle(rooms) {
       quickTimer: null,
       visibility,
       mode,
+      createdAt: Date.now(),
       maxPlayers: mode === "2v2" ? 4 : 2,
       missLimit: mode === "2v2" ? MISS_LIMIT_2V2 : MISS_LIMIT_1V1,
       players: [],
