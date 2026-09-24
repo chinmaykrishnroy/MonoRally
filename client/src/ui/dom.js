@@ -97,6 +97,14 @@ export function collectDom() {
     shareNativeBtn: $("shareNativeBtn"),
     shareToast: $("shareToast"),
     profileReplaysList: $("profileReplaysList"),
-    replayFileInput: $("replayFileInput")
+    replayFileInput: $("replayFileInput"),
+    // Session Zero & One-More-Match Loop elements
+    allModesBtn: $("allModesBtn"),
+    homeTag: $("homeTag"),
+    homeHint: $("homeHint"),
+    onboardingSkipBtn: $("onboardingSkipBtn"),
+    playAgainBtn: $("playAgainBtn"),
+    findHumanBtn: $("findHumanBtn"),
+    resultHighlights: $("resultHighlights")
   };
 }

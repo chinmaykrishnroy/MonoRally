@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.13.0] - 2026-09-24
+
+### Highlights
+- Session Zero 1-Click First-Time Entry: First-time visitors click `[ Play ]` on the hero and launch directly into an interactive on-court onboarding session without modal menus, configuration dialogs, or login gates. Returning players retain direct access to match settings, and all players can access standard game modes via `[ All Modes / Custom Match ]`.
+- First-Party Product Analytics Engine: Privacy-preserving, strictly pseudonymous event store with a 50,000-event ring buffer, 10-step full conversion funnel analysis (`landing` -> `gameplay_reached` -> `first_input` -> `first_return` -> `first_skill_shot` -> `first_match_completed` -> `second_match_started` -> `human_pvp_started` -> `human_pvp_completed` -> `rematch_or_next`), and activation summary metrics (median/p90 time-to-gameplay, time-to-first-input, onboarding completion, skill shot breakdown). Exposed via `/api/analytics/events`, `/api/analytics/funnel`, `/api/analytics/summary`, and `/api/analytics/dashboard`.
+- Lightweight Client Experimentation Framework: Deterministic 32-bit FNV-1a variant bucketing based on `anonymousId:experimentId` with persistent storage and URL query override support (`?exp_<id>=<variant>`). Registered experiments include `first_time_entry` (`direct_session_zero` vs `standard_menu`) and `onboarding_guidance` (`interactive_cues` vs `minimal_hints`).
+- Client Analytics Beacon Tracker: Batched background transmission via `navigator.sendBeacon` (with `fetch(keepalive)` fallback) flushing on 5s intervals, buffer limits, and page visibility changes. Tracks critical first-time milestones (`first_gameplay_frame`, `first_input`, `first_ball_contact`, `first_return`, `first_skill_shot`) once per user lifetime.
+- Interactive In-Court Onboarding State Machine: Non-modal, reactive on-court coaching progressing through `MOVEMENT` (lower-court pulsing guide arrows reacting instantly to touch or paddle input), `FIRST_RETURN` (readable serve with celebratory typography), `SHOT_SHAPING` (coaches paddle momentum shaping for smash, curve, counter, drive), and seamless transition to a Session Zero match against a tuned introductory bot.
+- Local Game Shot Classification & Audio Feedback: Ported authoritative physics shot classification directly to client `LocalGame`, providing immediate auditory and visual feedback for smash, curve, counter, drive, and standard returns in offline and warmup modes.
+- One-More-Match End Loop: Redesigned match completion screen featuring session highlight badges (Peak Ball Speed, Total Returns, Skill Shots) and prominent 1-click continuation actions: dominant `[ Play Again ]` (immediate rematch) and `[ Find a Human ]` (1-click transition to quick match with AI warmup).
+
 ## [v1.12.2] - 2026-09-24
 
 ### Highlights

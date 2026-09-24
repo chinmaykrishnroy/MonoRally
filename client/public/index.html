@@ -56,9 +56,10 @@
         <div class="playHome" id="playHome">
           <p class="eyebrow">MONO/RALLY</p>
           <h1>MonoRally</h1>
-          <p class="tag">Minimal paddle physics. Precise online rallies.</p>
+          <p class="tag" id="homeTag">MOVE THE PADDLE. SHAPE THE SHOT.</p>
           <button id="playBtn" class="playBtn" type="button">Play</button>
-          <p class="controlHint">Move with a lower-screen drag, A/D, or the arrow keys.</p>
+          <button id="allModesBtn" class="allModesBtn hidden" type="button">All game modes &rarr;</button>
+          <p class="controlHint" id="homeHint">Move with a lower-screen drag, A/D, or the arrow keys.</p>
           <section class="leaderboardPanel" aria-labelledby="leaderboardTitle">
             <header><span id="leaderboardTitle">Top rally scores</span><small>returns · time</small></header>
             <div class="leaderboardBoards">
@@ -166,6 +167,7 @@
             <span id="networkBadge" class="networkBadge" data-tooltip="Measured round-trip latency" hidden>-- ms</span>
           </div>
           <div class="hudActions">
+            <button id="onboardingSkipBtn" class="onboardingSkipBtn" type="button" aria-label="Skip Tutorial" hidden>Skip Tutorial</button>
             <button id="copyRoomGameBtn" aria-label="Copy room link" data-tooltip="Copy this room's invite link" hidden>Copy</button>
             <button id="fillAiBtn" aria-label="Fill with AI" data-tooltip="Fill every empty 2v2 slot with AI" hidden>Fill AI</button>
             <button id="replayBtn" aria-label="Replay" data-tooltip="Play again in the same room" hidden>Replay</button>
@@ -177,6 +179,11 @@
           <span>Match over</span>
           <strong id="resultTitle">You won</strong>
           <span id="resultScore">You 0 · Them 0</span>
+          <div id="resultHighlights" class="resultHighlights"></div>
+          <div class="resultPrimaryActions">
+            <button id="playAgainBtn" class="resultPrimaryBtn" type="button">Play Again</button>
+            <button id="findHumanBtn" class="resultSecondaryBtn" type="button">Find a Human</button>
+          </div>
           <div class="resultActions">
             <button id="shareCardBtn" class="resultActionBtn" type="button" aria-label="Share match result card">Share Card</button>
             <button id="watchReplayBtn" class="resultActionBtn" type="button" aria-label="Watch match replay">Watch Replay</button>

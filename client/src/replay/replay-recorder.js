@@ -27,7 +27,7 @@ export class ReplayRecorder {
     this.skillShots = { smash: 0, curve: 0, counter: 0, drive: 0 };
 
     this.replay = {
-      version: config.appVersion || "1.12.2",
+      version: config.appVersion || "1.13.0",
       id: `rly_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       mode,
       missLimit,

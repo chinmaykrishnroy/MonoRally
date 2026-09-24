@@ -1,8 +1,11 @@
 import { H, W, clamp, config, rand, reflectX } from "../core/shared.js";
 
 export class LocalGame {
-  constructor({ getInputX, hitEffect, playMiss, playPower, playStrike, playWall }) {
-    this.deps = { getInputX, hitEffect, playMiss, playPower, playStrike, playWall };
+  constructor({ getInputX, hitEffect, playMiss, playPower, playStrike, playWall, playSmash, playCurve, playDrive, playCounter, onContact, onMiss, aiDifficulty } = {}) {
+    this.deps = { getInputX, hitEffect, playMiss, playPower, playStrike, playWall, playSmash, playCurve, playDrive, playCounter };
+    this.aiDifficulty = aiDifficulty || null;
+    this.onContact = onContact || null;
+    this.onMiss = onMiss || null;
     this.mode = "1v1";
     this.missLimit = Number(config.missLimit1v1) || 5;
     this.elapsed = 0;
@@ -77,7 +80,7 @@ export class LocalGame {
 
     const leadBall = this.chooseAiBall();
     if (leadBall) {
-      const aiTuning = aiProfile();
+      const aiTuning = aiProfile(this.aiDifficulty || config.aiDifficulty);
       const ai = this.players[1];
       const predictedX = this.predictBallXAtY(leadBall, 28);
       const missPressure = this.misses.top >= this.missLimit - 1 ? aiTuning.clutch : 1;
@@ -148,19 +151,39 @@ export class LocalGame {
 
     ball.x = hitX;
     const offset = clamp((hitX - center) / (player.w / 2), -1, 1);
-    const speed = Math.max(ball.speed, Math.hypot(ball.vx, ball.vy));
+    const baseSpeed = Math.max(ball.speed, Math.hypot(ball.vx, ball.vy));
+    const shotType = classifyShot(player, ball, player.vx, hitX, center, player.w, this.elapsed);
+
+    let speed = baseSpeed;
+    let desiredVx;
+
+    if (shotType === "counter") {
+      speed = Math.min(baseSpeed * 1.25 + 60, 430 * 2.5);
+      desiredVx = -ball.vx * 0.85 + offset * speed * 0.4 + player.vx * 0.25;
+      ball.curve = clamp(player.vx * 0.26 + offset * 280, -1400, 1400);
+    } else if (shotType === "smash") {
+      speed = Math.min(baseSpeed * 1.35, 430 * 2.5);
+      desiredVx = ball.vx * 0.35 + offset * speed * 0.75 + player.vx * (0.34 * 1.2);
+      ball.curve = clamp(player.vx * 0.26 + offset * 280, -1400, 1400);
+    } else if (shotType === "curve") {
+      desiredVx = ball.vx * 0.4 + offset * speed * 0.8 + player.vx * 0.34;
+      ball.curve = clamp(Math.sign(offset) * (700 + Math.abs(player.vx) * 0.65), -1400, 1400);
+    } else if (shotType === "drive") {
+      speed = baseSpeed * 1.08;
+      desiredVx = clamp(ball.vx * 0.15 + offset * 60, -45, 45);
+      ball.curve = 0;
+    } else {
+      desiredVx = ball.vx * 0.42 + offset * speed * 0.72 + player.vx * (Number(config.paddleVelocityTransfer) || 0.34);
+      ball.curve = clamp(
+        player.vx * (Number(config.ballSpinTransfer) || 0.26) + offset * (Number(config.ballSpinOffset) || 280),
+        -(Number(config.ballSpinMax) || 1400),
+        Number(config.ballSpinMax) || 1400
+      );
+    }
+
     const maxHorizontal = speed * Math.sin((68 * Math.PI) / 180);
-    ball.vx = clamp(
-      ball.vx * 0.42 + offset * speed * 0.72 + player.vx * (Number(config.paddleVelocityTransfer) || 0.34),
-      -maxHorizontal,
-      maxHorizontal
-    );
+    ball.vx = clamp(desiredVx, -maxHorizontal, maxHorizontal);
     ball.vy = Math.max(speed * 0.36, Math.sqrt(Math.max(0, speed * speed - ball.vx * ball.vx))) * (player.team === "top" ? 1 : -1);
-    ball.curve = clamp(
-      player.vx * (Number(config.ballSpinTransfer) || 0.26) + offset * (Number(config.ballSpinOffset) || 280),
-      -(Number(config.ballSpinMax) || 1400),
-      Number(config.ballSpinMax) || 1400
-    );
     ball.speed = Math.hypot(ball.vx, ball.vy);
     ball.y = contactY;
     const touchBit = player.team === "top" ? 1 : 2;
@@ -174,10 +197,17 @@ export class LocalGame {
       y,
       at: this.elapsed,
       slot: player.id === "human" ? 0 : 1,
-      intensity: clamp(Math.abs(offset) * 0.45 + Math.abs(player.vx) / (Number(config.paddleMaxSpeed) || 4200), 0.2, 1)
+      intensity: clamp(Math.abs(offset) * 0.45 + Math.abs(player.vx) / (Number(config.paddleMaxSpeed) || 4200) + (shotType !== "standard" ? 0.28 : 0), 0.2, 1),
+      shotType
     };
-    this.deps.hitEffect(ball.x, ball.y);
-    this.deps.playStrike(Math.abs(offset));
+    this.deps.hitEffect(ball.x, ball.y, shotType);
+    if (shotType === "smash") this.deps.playSmash ? this.deps.playSmash() : this.deps.playStrike(0.8);
+    else if (shotType === "curve") this.deps.playCurve ? this.deps.playCurve() : this.deps.playStrike(0.6);
+    else if (shotType === "counter") this.deps.playCounter ? this.deps.playCounter() : this.deps.playStrike(0.7);
+    else if (shotType === "drive") this.deps.playDrive ? this.deps.playDrive() : this.deps.playStrike(0.5);
+    else this.deps.playStrike(Math.abs(offset));
+
+    this.onContact?.(player, ball, shotType);
   }
 
   sweptPaddleContact(player, ball) {
@@ -268,6 +298,7 @@ export class LocalGame {
     this.lastMissTeam = team;
     this.pendingCountdown = true;
     this.deps.playMiss();
+    this.onMiss?.(team, ball);
     this.onRallyEnd?.();
   }
 
@@ -342,13 +373,47 @@ export class LocalGame {
   }
 }
 
-function aiProfile() {
-  if (config.aiDifficulty === "easy") return { reaction: 3.2, wobbleChance: 0.035, wobble: 190, error: 135, errorRate: 1.4, clutch: 0.8 };
-  if (config.aiDifficulty === "medium") return { reaction: 5.2, wobbleChance: 0.014, wobble: 90, error: 62, errorRate: 1.9, clutch: 0.55 };
-  if (config.aiDifficulty === "insane") return { reaction: 22, wobbleChance: 0, wobble: 0, error: 2, errorRate: 0.4, clutch: 0 };
+function aiProfile(difficulty = config.aiDifficulty) {
+  if (difficulty === "session_zero") return { reaction: 4.2, wobbleChance: 0.01, wobble: 40, error: 32, errorRate: 1.5, clutch: 0.6 };
+  if (difficulty === "easy") return { reaction: 3.2, wobbleChance: 0.035, wobble: 190, error: 135, errorRate: 1.4, clutch: 0.8 };
+  if (difficulty === "medium") return { reaction: 5.2, wobbleChance: 0.014, wobble: 90, error: 62, errorRate: 1.9, clutch: 0.55 };
+  if (difficulty === "insane") return { reaction: 22, wobbleChance: 0, wobble: 0, error: 2, errorRate: 0.4, clutch: 0 };
   return { reaction: 10.5, wobbleChance: 0.003, wobble: 22, error: 24, errorRate: 2.2, clutch: 0.25 };
 }
 
 function powerupEffectSeconds() {
   return (Number(config.powerupEffectMs) || 5000) / 1000;
+}
+
+export function classifyShot(player, ball, paddleVelocity, hitX, center, width, now) {
+  const offset = clamp((hitX - center) / Math.max(1, width / 2), -1, 1);
+  const absOffset = Math.abs(offset);
+  const absPaddleSpeed = Math.abs(paddleVelocity);
+  const baseSpeed = Math.max(ball.speed || 0, Math.hypot(ball.vx, ball.vy), 1);
+
+  if (player.laserActiveUntil > now) {
+    return "smash";
+  }
+
+  // 1. Counter / Parry: Fast oncoming ball, paddle moving opposite to incoming x velocity, well centered
+  if (baseSpeed >= 540 && absOffset <= 0.45 && Math.sign(paddleVelocity) !== 0 && Math.sign(paddleVelocity) !== Math.sign(ball.vx)) {
+    return "counter";
+  }
+
+  // 2. Smash: Rapid paddle acceleration and hit within paddle central zone
+  if (absPaddleSpeed >= 1100 && absOffset <= 0.38) {
+    return "smash";
+  }
+
+  // 3. Curve: Outer edge slicing contact with paddle motion
+  if (absOffset >= 0.52 && absPaddleSpeed >= 380) {
+    return "curve";
+  }
+
+  // 4. Drive: Dead center hit with low paddle velocity
+  if (absOffset <= 0.16 && absPaddleSpeed <= 350) {
+    return "drive";
+  }
+
+  return "standard";
 }

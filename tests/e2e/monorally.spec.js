@@ -2,7 +2,12 @@ import { expect, test } from "@playwright/test";
 
 async function openModeStep(page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const allModes = page.locator("#allModesBtn");
+  if (await allModes.isVisible()) {
+    await allModes.click();
+  } else {
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+  }
 }
 
 async function startPractice(page) {
@@ -34,6 +39,7 @@ test("inactive screens cancel transient inversion and rumble classes", async ({ 
     shake: document.body.classList.contains("shake")
   }))).toEqual({ invert: false, shake: false });
 });
+
 test("home guides players through a small play flow", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "MonoRally" })).toBeVisible();
@@ -41,7 +47,12 @@ test("home guides players through a small play flow", async ({ page }) => {
   await expect(page.getByText("Top rally scores")).toBeVisible();
   await expect(page.getByRole("button", { name: /Quick match/ })).toBeHidden();
 
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const allModes = page.locator("#allModesBtn");
+  if (await allModes.isVisible()) {
+    await allModes.click();
+  } else {
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+  }
   await expect(page.getByText("Choose your match")).toBeVisible();
   await expect(page.getByRole("button", { name: /Practice with AI/ })).toBeVisible();
 
@@ -50,6 +61,47 @@ test("home guides players through a small play flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Quick match/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Public rooms/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Private room/ })).toBeVisible();
+});
+
+test("first-time player 1-click enters Session Zero with onboarding cues", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.goto("/?exp_first_time_entry=direct_session_zero");
+
+  await expect(page.locator("#playBtn")).toBeVisible();
+  await expect(page.locator("#allModesBtn")).toBeVisible();
+
+  // Clicking Play enters Session Zero immediately
+  await page.locator("#playBtn").click();
+  await expect(page.locator("#game")).toBeVisible();
+  await expect(page.locator("#modeLabel")).toHaveText("Session Zero");
+  await expect(page.locator("#onboardingSkipBtn")).toBeVisible();
+
+  // Skip tutorial
+  await page.locator("#onboardingSkipBtn").click();
+  await expect(page.locator("#onboardingSkipBtn")).toBeHidden();
+  await expect(page.locator("#status")).toContainText("Practice match");
+});
+
+test("analytics beacon endpoint receives event batches and calculates funnel", async ({ request }) => {
+  const res = await request.post("/api/analytics/events", {
+    data: [
+      { name: "app_open", anonymousId: "e2e_anon", sessionId: "e2e_sess", timestamp: Date.now() },
+      { name: "first_gameplay_frame", anonymousId: "e2e_anon", sessionId: "e2e_sess", timestamp: Date.now() }
+    ]
+  });
+  expect(res.ok()).toBe(true);
+  const data = await res.json();
+  expect(data.ok).toBe(true);
+  expect(data.received).toBe(2);
+
+  const funnelRes = await request.get("/api/analytics/funnel");
+  expect(funnelRes.ok()).toBe(true);
+  const funnel = await funnelRes.json();
+  expect(funnel.steps.length).toBeGreaterThan(0);
 });
 
 test("opens and displays player profile modal with rank and stats", async ({ page }, testInfo) => {
@@ -269,7 +321,12 @@ test("player name and match size survive a refresh", async ({ page }) => {
   await page.locator("#nameInput").fill("steady-rally");
   await page.getByRole("button", { name: "2 versus 2" }).click();
   await page.reload();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const allModes = page.locator("#allModesBtn");
+  if (await allModes.isVisible()) {
+    await allModes.click();
+  } else {
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+  }
   await expect(page.locator("#nameInput")).toHaveValue("steady-rally");
   await expect(page.getByRole("button", { name: "2 versus 2" })).toHaveAttribute("aria-pressed", "true");
 });

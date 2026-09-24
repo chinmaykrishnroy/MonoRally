@@ -19,6 +19,9 @@ import { createLeaderboardUi } from "./ui/leaderboard.js";
 import { createPlayFlow } from "./ui/play-flow.js";
 import { createProfileUi } from "./ui/profile-ui.js";
 import { createSettingsUi } from "./ui/settings-ui.js";
+import { tracker } from "./analytics/tracker.js";
+import { getExperimentVariant } from "./analytics/experiments.js";
+import { OnboardingController } from "./game/onboarding.js";
 
 const state = {
   ws: null,
@@ -237,11 +240,25 @@ const dom = {
   replayBtn,
   resultScore: elements.resultScore,
   resultTitle: elements.resultTitle,
+  resultHighlights: elements.resultHighlights,
   statusEl,
   timerEl
 };
 const { cancelRumble, playCounter, playCurve, playDrive, playGameOver, playMiss, playPower, playRumble, playSmash, playStrike, playWall, unlockAudio } = createAudio({ state, settings });
 const { closeModal, ensureHandle, loadConfig, loadSettings, openModal, saveSettings } = createSettingsUi({ elements, state });
+
+const onboarding = new OnboardingController({
+  onComplete: () => {
+    playFlow?.refreshFirstTimeState?.();
+    if (elements.onboardingSkipBtn) elements.onboardingSkipBtn.hidden = true;
+  },
+  onSkip: () => {
+    playFlow?.refreshFirstTimeState?.();
+    if (elements.onboardingSkipBtn) elements.onboardingSkipBtn.hidden = true;
+    statusEl.textContent = "Practice match. Five misses loses.";
+  }
+});
+
 const renderer = createRenderer({
   ctx,
   state,
@@ -249,7 +266,8 @@ const renderer = createRenderer({
   cancelRumble,
   playRumble,
   nameForSlot,
-  localPerformanceForServerTimestamp: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp)
+  localPerformanceForServerTimestamp: (timestamp) => clock.localPerformanceForServerTimestamp(timestamp),
+  getOnboardingState: () => onboarding.getRenderState()
 });
 const clock = createClockSync({
   intervalMs: () => config.clockSyncIntervalMs,
@@ -294,14 +312,25 @@ const playFlow = createPlayFlow({
   elements,
   actions: {
     copyRoomLink,
+    isFirstTimePlayer: () => {
+      if (!tracker.isNewPlayer()) return false;
+      const variant = getExperimentVariant("first_time_entry", { anonymousId: tracker.anonymousId });
+      return variant === "direct_session_zero";
+    },
+    onPrimaryPlay: () => {
+      tracker.track("play_clicked", { flow: "session_zero_direct" });
+      startSessionZero();
+    },
     create: (mode, visibility) => {
       unlockAudio();
+      tracker.track("play_clicked", { flow: "create", mode, visibility });
       send(helloMessage());
       send({ t: "createRoom", mode, visibility, playerId: profileUi.getProfile().id });
       playFlow.setStatus(`Creating a ${visibility} ${mode} room...`);
     },
     join: (code, role) => {
       unlockAudio();
+      tracker.track("play_clicked", { flow: "join", role });
       send(helloMessage());
       send({ t: "joinRoom", code, role, playerId: profileUi.getProfile().id });
       playFlow.setStatus(role === "spectator" ? `Opening room ${code}...` : `Joining room ${code}...`);
@@ -312,6 +341,7 @@ const playFlow = createPlayFlow({
     },
     practice: (mode) => {
       unlockAudio();
+      tracker.track("play_clicked", { flow: "practice", mode });
       if (mode === "1v1") {
         startLocal("Practice / 1v1");
         return;
@@ -323,6 +353,8 @@ const playFlow = createPlayFlow({
     },
     quick: (mode) => {
       unlockAudio();
+      tracker.track("play_clicked", { flow: "quick", mode });
+      tracker.track("queue_joined", { mode });
       send(helloMessage());
       send({ t: "quick", mode, playerId: profileUi.getProfile().id });
       state.searchingQuick = true;
@@ -330,6 +362,9 @@ const playFlow = createPlayFlow({
     },
     quickWarmup: (mode) => {
       unlockAudio();
+      tracker.track("play_clicked", { flow: "quick_warmup", mode });
+      tracker.track("queue_joined", { mode });
+      tracker.track("warmup_started", { mode });
       send(helloMessage());
       send({ t: "quick", mode, playerId: profileUi.getProfile().id });
       state.searchingQuick = true;
@@ -360,9 +395,13 @@ connect();
 loadConfig();
 loadSettings();
 playFlow.setMode(state.quickMode);
+playFlow.refreshFirstTimeState();
 applyRoomFromUrl();
 bindUi();
 registerPwa();
+tracker.track("app_open");
+tracker.trackFirst("first_render");
+tracker.track("play_impression");
 requestAnimationFrame(frame);
 
 function bindUi() {
@@ -370,6 +409,27 @@ function bindUi() {
   infoBtn.addEventListener("click", () => openModal("info"));
   copyRoomGameBtn.addEventListener("click", copyRoomLink);
   replayBtn.addEventListener("click", replayGame);
+  if (elements.onboardingSkipBtn) {
+    elements.onboardingSkipBtn.addEventListener("click", () => {
+      onboarding.skip();
+      elements.onboardingSkipBtn.hidden = true;
+    });
+  }
+  if (elements.playAgainBtn) {
+    elements.playAgainBtn.addEventListener("click", () => {
+      tracker.track("rematch_clicked");
+      replayGame();
+    });
+  }
+  if (elements.findHumanBtn) {
+    elements.findHumanBtn.addEventListener("click", () => {
+      tracker.track("next_opponent_clicked");
+      leaveGame();
+      playFlow.setStatus("Finding a human match...");
+      playFlow.show("online");
+      playFlow.quickWarmup?.("1v1");
+    });
+  }
   fillAiBtn.addEventListener("click", () => {
     fillAiBtn.hidden = true;
     statusEl.textContent = "filling empty seats...";
@@ -415,6 +475,7 @@ function bindUi() {
     dismissControlCoach();
     state.keys.add(event.key.toLowerCase());
     unlockAudio();
+    if (onboarding.isActive()) onboarding.handleInput(state.inputX, "keyboard");
   });
   window.addEventListener("keyup", (event) => {
     if (!isPlayingActive()) return;
@@ -426,6 +487,9 @@ function bindUi() {
     dismissControlCoach();
     const point = renderer.clientToCourt(event.clientX, event.clientY);
     state.inputX = clamp(point.x / W, 0, 1);
+    if (onboarding.isActive()) {
+      onboarding.handleInput(state.inputX, event.pointerType === "touch" ? "touch" : "mouse");
+    }
     if (state.online && state.role === "player") sendInput();
   };
   canvas.addEventListener("pointerdown", (event) => {
@@ -533,7 +597,10 @@ function handleServer(msg) {
     }
   }
   if (msg.t === "quickFallback") playFlow.setStatus("AI players filled the empty seats.");
-  if (msg.t === "matched") playFlow.setStatus(`Match found. Room ${msg.code}.`);
+  if (msg.t === "matched") {
+    tracker.track("human_opponent_found");
+    playFlow.setStatus(`Match found. Room ${msg.code}.`);
+  }
   if (msg.t === "roomCreated") {
     roomCode.value = msg.code;
     playFlow.setStatus(`Room ${msg.code} is ready.`);
@@ -563,6 +630,11 @@ function handleServer(msg) {
       if (state.searchingQuick) {
         state.searchingQuick = false;
         state.localGame = null;
+      }
+      tracker.trackFirst("first_gameplay_frame");
+      tracker.track("match_started", { mode: msg.mode, role: msg.role, online: true });
+      if (msg.role === "player") {
+        tracker.track("human_match_started", { mode: msg.mode });
       }
       playFlow.finishJoin();
       state.online = true;
@@ -819,6 +891,48 @@ async function copyRoomLink() {
   }
 }
 
+function startSessionZero() {
+  unlockAudio();
+  const handle = ensureHandle();
+  state.online = false;
+  state.local = true;
+  state.role = "player";
+  state.team = "bottom";
+  state.slot = 0;
+  state.predictedPaddleX = W / 2;
+  state.predictedPaddleVx = 0;
+  state.localGame = newLocalGame({
+    aiDifficulty: "session_zero",
+    onContact: (player, ball, shotType) => {
+      onboarding.handleContact(player, ball, shotType);
+    },
+    onMiss: (team) => {
+      if (team === "top") {
+        tracker.track("rally_milestone", { rallyCount: state.localGame?.players[0]?.returns || 0 });
+      }
+    }
+  });
+  state.localGame.players[0].name = handle;
+  state.replayRecorder.start({
+    mode: "1v1",
+    missLimit: 5,
+    players: [
+      { name: handle || "you", team: "bottom" },
+      { name: "Session Zero AI", team: "top" }
+    ]
+  });
+  resetRoundVisuals();
+  showGame("Session Zero");
+  roomBadge.hidden = true;
+  networkBadge.hidden = true;
+  statusEl.textContent = "Session Zero · Move paddle to shape your shots.";
+  if (elements.onboardingSkipBtn) elements.onboardingSkipBtn.hidden = false;
+
+  tracker.trackFirst("first_gameplay_frame");
+  tracker.track("match_started", { mode: "session_zero" });
+  onboarding.start();
+}
+
 function startLocal(label) {
   const handle = ensureHandle();
   state.online = false;
@@ -844,6 +958,8 @@ function startLocal(label) {
   showControlCoach();
   networkBadge.hidden = true;
   statusEl.textContent = "Practice match. Five misses loses.";
+  tracker.trackFirst("first_gameplay_frame");
+  tracker.track("match_started", { mode: "practice", label });
 }
 
 function showGame(label) {
@@ -872,6 +988,10 @@ function dismissControlCoach() {
 }
 
 function leaveGame() {
+  if (onboarding.isActive()) {
+    onboarding.skip();
+  }
+  if (elements.onboardingSkipBtn) elements.onboardingSkipBtn.hidden = true;
   if (state.searchingQuick) {
     state.searchingQuick = false;
     send({ t: "cancelQuick" });
@@ -944,14 +1064,21 @@ function resetRoundVisuals() {
   renderer.clearThunder();
 }
 
-function newLocalGame() {
+function newLocalGame({ aiDifficulty = config.aiDifficulty, onContact = null, onMiss = null } = {}) {
   return new LocalGame({
     getInputX: () => state.inputX,
     hitEffect,
     playMiss,
     playPower,
     playStrike,
-    playWall
+    playWall,
+    playSmash,
+    playCurve,
+    playDrive,
+    playCounter,
+    aiDifficulty,
+    onContact,
+    onMiss
   });
 }
 
@@ -990,6 +1117,7 @@ function frame(now) {
       if (state.keys.has("arrowleft") || state.keys.has("a")) state.inputX -= dt * 1.35;
       if (state.keys.has("arrowright") || state.keys.has("d")) state.inputX += dt * 1.35;
       state.inputX = clamp(state.inputX, 0, 1);
+      if (onboarding.isActive()) onboarding.handleInput(state.inputX, "keyboard");
       if (state.online && state.role === "player") sendInput();
     }
     if (state.online && state.role === "player" && state.lastNetState?.status === "running") {
@@ -1043,6 +1171,9 @@ function handleBottomHalfControl(event) {
 
   const point = renderer.clientToCourt(event.clientX, event.clientY);
   state.inputX = clamp(point.x / W, 0, 1);
+  if (onboarding.isActive()) {
+    onboarding.handleInput(state.inputX, event.pointerType === "touch" ? "touch" : "mouse");
+  }
   if (state.online && state.role === "player") sendInput();
 }
 
@@ -1086,6 +1217,10 @@ function isPlayingActive() {
 
 function hitEffect(x, y, shotType = "standard") {
   const isSkillShot = shotType !== "standard";
+  if (isSkillShot) {
+    tracker.track("skill_shot", { shotType });
+    tracker.trackFirst("first_skill_shot", { shotType });
+  }
   state.effects.push({
     x,
     y,
@@ -1134,6 +1269,11 @@ function maybePlayGameOver(snapshot) {
   const ownTeam = state.local ? "bottom" : state.team;
   playGameOver(snapshot.winner === ownTeam);
 
+  if (onboarding.isActive()) {
+    onboarding.handleMatchEnded(snapshot.winner);
+  }
+  if (elements.onboardingSkipBtn) elements.onboardingSkipBtn.hidden = true;
+
   const completed = state.replayRecorder.finalize({
     winner: snapshot.winner,
     elapsed: snapshot.elapsed
@@ -1144,6 +1284,8 @@ function maybePlayGameOver(snapshot) {
   }
 
   const ownWon = snapshot.winner === ownTeam;
+  tracker.track("match_completed", { mode: snapshot.mode, winner: snapshot.winner, ownWon, elapsed: snapshot.elapsed });
+  if (ownWon) tracker.track("personal_best", { type: "win", mode: snapshot.mode });
   const ownPlayer = snapshot.players?.find((p) => p.team === ownTeam) || { name: settings.name || "You" };
   const oppPlayer = snapshot.players?.find((p) => p.team !== ownTeam) || { name: state.local ? "AI" : "Opponent" };
   const prof = profileUi.getProfile();

@@ -3,7 +3,7 @@ import { createTrajectoryPredictor } from "./trajectory.js";
 import { createCourtViewport } from "./viewport.js";
 import { orientSnapshotForPlayer, orientYForPlayer } from "./view-orientation.js";
 
-export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playRumble, nameForSlot, localPerformanceForServerTimestamp = () => performance.now() }) {
+export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playRumble, nameForSlot, localPerformanceForServerTimestamp = () => performance.now(), getOnboardingState = null }) {
   let thunderTimer = 0;
   const ballTrails = [];
   const impactEvents = new Map();
@@ -274,7 +274,93 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
       if (progress >= 1) state.effects.splice(i, 1);
     }
 
+    drawOnboarding(getOnboardingState?.());
+
     ctx.restore();
+  }
+
+  function drawOnboarding(onboarding) {
+    if (!onboarding || !onboarding.active) return;
+    const { colors } = getThemeColors();
+    const now = performance.now();
+
+    if (onboarding.step === 1) {
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.005);
+      ctx.save();
+      ctx.strokeStyle = colors.accent;
+      ctx.fillStyle = colors.accent;
+      ctx.globalAlpha = 0.3 + 0.4 * pulse;
+      ctx.lineWidth = 2;
+
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(120, H - 75);
+      ctx.lineTo(W - 120, H - 75);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const arrowOffset = Math.sin(now * 0.006) * 12;
+      ctx.beginPath();
+      ctx.moveTo(140 - arrowOffset, H - 75);
+      ctx.lineTo(165 - arrowOffset, H - 85);
+      ctx.lineTo(165 - arrowOffset, H - 65);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(W - 140 + arrowOffset, H - 75);
+      ctx.lineTo(W - 165 + arrowOffset, H - 85);
+      ctx.lineTo(W - 165 + arrowOffset, H - 65);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    if (onboarding.cueText) {
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      const bannerW = 540;
+      const bannerH = onboarding.cueSubtext ? 54 : 38;
+      const bannerY = 85;
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+      ctx.strokeStyle = colors.accent;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(W / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 8);
+      } else {
+        ctx.rect(W / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = colors.accent;
+      ctx.font = "bold 16px Consolas, monospace";
+      ctx.fillText(onboarding.cueText, W / 2, onboarding.cueSubtext ? bannerY - 10 : bannerY);
+
+      if (onboarding.cueSubtext) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.font = "12px Consolas, monospace";
+        ctx.fillText(onboarding.cueSubtext, W / 2, bannerY + 12);
+      }
+      ctx.restore();
+    }
+
+    if (onboarding.celebration) {
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "bold 32px Consolas, monospace";
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = colors.accent;
+      ctx.shadowBlur = 18;
+      ctx.fillText(onboarding.celebration, W / 2, H / 2 - 30);
+      ctx.restore();
+    }
   }
 
   function getThemeColors() {
@@ -638,6 +724,17 @@ export function createRenderer({ ctx, state, dom, cancelRumble = () => {}, playR
     if (!ended) return;
     dom.resultTitle.textContent = winText(snapshot);
     dom.resultScore.textContent = resultScoreText(view);
+    if (dom.resultHighlights && state.lastMatchData?.stats) {
+      const stats = state.lastMatchData.stats;
+      const peakSpeed = Math.round(stats.peakSpeed || 430);
+      const returns = stats.totalReturns || 0;
+      const skills = stats.skillShots ? Object.values(stats.skillShots).reduce((a, b) => a + b, 0) : 0;
+      dom.resultHighlights.innerHTML = `
+        <span>Peak Speed: ${peakSpeed} px/s</span>
+        <span>Returns: ${returns}</span>
+        ${skills > 0 ? `<span>Skill Shots: ${skills}</span>` : ""}
+      `;
+    }
   }
 
   function powerName(type) {

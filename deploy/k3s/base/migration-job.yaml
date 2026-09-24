@@ -14,7 +14,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrator
-          image: ghcr.io/chinmaykrishnroy/monorally:1.12.2
+          image: ghcr.io/chinmaykrishnroy/monorally:1.13.0
           imagePullPolicy: IfNotPresent
           command: ["node", "scripts/migrate.js"]
           env:

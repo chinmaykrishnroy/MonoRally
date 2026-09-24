@@ -1,6 +1,7 @@
 export function createPlayFlow({ elements, actions }) {
   const {
     aiBtn,
+    allModesBtn,
     browseRoomsBtn,
     copyRoomBtn,
     createPrivateBtn,
@@ -50,8 +51,26 @@ export function createPlayFlow({ elements, actions }) {
     rooms: "Public rooms"
   };
 
+  function refreshFirstTimeState() {
+    const isFirst = actions.isFirstTimePlayer?.() ?? false;
+    if (isFirst) {
+      playBtn.classList.add("primaryAction");
+      allModesBtn?.classList.remove("hidden");
+    } else {
+      playBtn.classList.remove("primaryAction");
+      allModesBtn?.classList.add("hidden");
+    }
+  }
+
   function bind() {
-    playBtn.addEventListener("click", () => show("mode"));
+    playBtn.addEventListener("click", () => {
+      if (actions.isFirstTimePlayer?.()) {
+        actions.onPrimaryPlay?.();
+      } else {
+        show("mode");
+      }
+    });
+    allModesBtn?.addEventListener("click", () => show("mode"));
     flowBackBtn.addEventListener("click", goBack);
     quick1.addEventListener("click", () => setMode("1v1"));
     quick2.addEventListener("click", () => setMode("2v2"));
@@ -280,7 +299,8 @@ export function createPlayFlow({ elements, actions }) {
 
   setMode("1v1", false);
   bind();
-  return { finishJoin, mode: () => mode, openPrivateCode, reset, roomsLoadFailed, setMode, setStatus, show, updateRooms };
+  refreshFirstTimeState();
+  return { finishJoin, mode: () => mode, openPrivateCode, refreshFirstTimeState, reset, roomsLoadFailed, setMode, setStatus, show, updateRooms };
 }
 
 function mergeRooms(current, incoming) {

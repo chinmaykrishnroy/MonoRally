@@ -4,6 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ALLOWED_ORIGINS, publicConfig } from "./config.js";
 import { metrics } from "./metrics.js";
+import { AnalyticsEventStore } from "./analytics/event-store.js";
+
+const defaultAnalyticsStore = new AnalyticsEventStore();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../../client/public");
@@ -47,7 +50,8 @@ function readJsonBody(req, limit = 16384) {
   });
 }
 
-export function createHttpServer({ checkHealth, leaderboard, playerRepository, matchRepository, roomDirectory, publicRoomPage, onDrain } = {}) {
+export function createHttpServer({ checkHealth, leaderboard, playerRepository, matchRepository, roomDirectory, publicRoomPage, onDrain, analyticsStore } = {}) {
+  const activeAnalyticsStore = analyticsStore || defaultAnalyticsStore;
   return http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
@@ -283,6 +287,47 @@ export function createHttpServer({ checkHealth, leaderboard, playerRepository, m
           });
           res.end(JSON.stringify({ error: "Failed to load ranked leaderboard", details: err.message }));
         });
+      return;
+    }
+
+    if (requested === "/api/analytics/events") {
+      if (req.method === "POST") {
+        readJsonBody(req, 65536)
+          .then((body) => {
+            const batch = Array.isArray(body) ? body : (Array.isArray(body?.events) ? body.events : [body]);
+            const result = activeAnalyticsStore.ingest(batch);
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ ok: true, received: batch.length, ...result }));
+          })
+          .catch((err) => {
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+          });
+        return;
+      }
+    }
+
+    if (requested === "/api/analytics/funnel") {
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      res.end(JSON.stringify(activeAnalyticsStore.getFunnelReport()));
+      return;
+    }
+
+    if (requested === "/api/analytics/summary" || requested === "/api/analytics/dashboard") {
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      });
+      res.end(JSON.stringify(activeAnalyticsStore.getSummaryMetrics()));
       return;
     }
 

@@ -1899,5 +1899,105 @@ body.is-replaying .spectatorBar {
   gap: 6px;
 }
 
+/* Session Zero & First-Time Player Styles */
+.playBtn.primaryAction {
+  min-height: 54px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-color: var(--accent);
+  box-shadow: 0 0 16px var(--accent-glow);
+  margin-top: 6px;
+  width: 100%;
+}
+
+.allModesBtn {
+  min-height: 36px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding: 6px 12px;
+  margin-top: 4px;
+  display: inline-block;
+  transition: color 120ms ease;
+}
+
+.allModesBtn:hover {
+  color: var(--fg);
+  background: transparent;
+}
+
+.onboardingSkipBtn {
+  min-height: 32px;
+  border-color: var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 10px;
+}
+
+.onboardingSkipBtn:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+
+/* One-More-Match Loop Result Styles */
+.resultPrimaryActions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin: 12px 0 6px;
+}
+
+.resultPrimaryBtn {
+  flex: 1;
+  min-height: 48px;
+  font-size: 14px;
+  font-weight: 700;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.resultPrimaryBtn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.resultSecondaryBtn {
+  flex: 1;
+  min-height: 48px;
+  font-size: 14px;
+  border-color: var(--line);
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.resultSecondaryBtn:hover {
+  border-color: var(--fg);
+}
+
+.resultHighlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 8px 0;
+}
+
+.resultHighlights span {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+
+
 
 
